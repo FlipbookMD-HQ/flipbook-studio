@@ -9,6 +9,7 @@ import { createApp } from "./app.js";
 import { createToken } from "./guard.js";
 import { SettingsStore, configDir } from "./settings.js";
 import { normalizeBaseUrl } from "./llm/provider.js";
+import { resetGenerationTemp } from "./ai/generate.js";
 
 export const DEFAULT_PORT = 4321;
 export const HOST = "127.0.0.1";
@@ -171,6 +172,8 @@ export async function launch(
   const log = deps.log ?? ((line: string) => console.log(line));
   const workspace = await checkWorkspace(options.workspace);
   await checkLibrary(options.library);
+  // A crash mid-generation leaves a run folder; nothing in it is ever needed again (D17).
+  await resetGenerationTemp(workspace).catch(() => {});
   // Core reads the library location from FLIPBOOK_HOME.
   process.env.FLIPBOOK_HOME = options.library;
 
