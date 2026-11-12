@@ -21,7 +21,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError, addSlide, deleteSlide, reorderSlides } from "../api";
-import type { ApiError, DeckDetail, SlideDoc, StructureResponse } from "../../shared/api";
+import type { ApiError, DeckDetail, SlideDoc, StructureResponse, Violation } from "../../shared/api";
+import { ViolationBadge, violationsFor } from "./Violations";
 import { ErrorNotice } from "./Shell";
 
 const NEW_SLIDE = {
@@ -50,12 +51,15 @@ function asApiError(error: unknown): ApiError {
  */
 export function SlideList({
   deck,
+  violations,
   currentId,
   locked,
   onOpen,
   onChanged,
 }: {
   deck: DeckDetail;
+  /** The deck's violations, live while the open slide has unsaved changes. */
+  violations: Violation[];
   currentId: string;
   locked: boolean;
   onOpen: () => void;
@@ -75,7 +79,7 @@ export function SlideList({
 
   function apply(result: StructureResponse, nextIndex: number) {
     queryClient.setQueryData<DeckDetail>(["deck", deck.id], (data) =>
-      data ? { ...data, slides: result.slides, hashes: result.hashes } : data,
+      data ? { ...data, slides: result.slides, hashes: result.hashes, violations: result.violations } : data,
     );
     const index = Math.max(0, Math.min(nextIndex, result.slides.length - 1));
     onChanged(result.slides[index]!.id);
@@ -148,6 +152,7 @@ export function SlideList({
                 deckId={deck.id}
                 slide={slide}
                 current={slide.id === currentId}
+                issues={deck.hasBlueprint ? violationsFor(violations, slide).length : 0}
                 disabled={disabled}
                 onOpen={onOpen}
               />
@@ -202,12 +207,14 @@ function SlideRow({
   deckId,
   slide,
   current,
+  issues,
   disabled,
   onOpen,
 }: {
   deckId: string;
   slide: SlideDoc;
   current: boolean;
+  issues: number;
   disabled: boolean;
   onOpen: () => void;
 }) {
@@ -240,6 +247,7 @@ function SlideRow({
       >
         {label}
       </Link>
+      <ViolationBadge count={issues} />
     </li>
   );
 }

@@ -64,6 +64,10 @@ export const WorkspaceSchema = z.object({
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
+// A blueprint violation (core's Violation). `source` is a slide source or "deck"; `message` is the CLI string.
+export const ViolationSchema = z.object({ source: z.string(), code: z.string(), message: z.string() });
+export type Violation = z.infer<typeof ViolationSchema>;
+
 // A slide as the editor holds it (data-model: SlideDraft). Mirrors core's SlideDraft.
 export const SlideDraftSchema = z.object({
   markdown: z.string().max(200_000),
@@ -86,6 +90,9 @@ export const SlideDocSchema = z.object({
   html: z.string(),
   draft: SlideDraftSchema,
   file: z.string(),
+  /** The slide's source as violations name it (a manifest path, or "slide N" in a single file). */
+  source: z.string(),
+  violations: z.array(ViolationSchema),
 });
 export type SlideDoc = z.infer<typeof SlideDocSchema>;
 
@@ -103,6 +110,10 @@ export const DeckDetailSchema = z.object({
   templates: z.array(z.string()),
   /** Page types its blueprint defines (empty without a blueprint). */
   types: z.array(z.string()),
+  /** False when neither the deck nor its kit has a blueprint: the UI shows no checks. */
+  hasBlueprint: z.boolean(),
+  /** The whole deck's blueprint violations; messages are exactly what `flipbook check` prints. */
+  violations: z.array(ViolationSchema),
 });
 export type DeckDetail = z.infer<typeof DeckDetailSchema>;
 
@@ -118,7 +129,6 @@ export const CreateDeckRequestSchema = z.object({
 export type CreateDeckRequest = z.infer<typeof CreateDeckRequestSchema>;
 
 const Hash = z.string().regex(/^[0-9a-f]{64}$/, "Use the sha256 from the last read.");
-export const ViolationSchema = z.object({ source: z.string(), code: z.string(), message: z.string() });
 
 // POST /api/decks/:id/preview (US-3). Violations stay empty until US-5.
 export const PreviewRequestSchema = z.object({
