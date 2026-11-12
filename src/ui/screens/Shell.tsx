@@ -17,6 +17,9 @@ export function Shell({
         <Link to="/" className="brand">
           FLIPBOOK <span>STUDIO</span>
         </Link>
+        <nav className="kits-nav" aria-label="Kits">
+          <Link to="/kits/themes">Themes</Link>
+        </nav>
         {crumb ? <span className="crumb">{crumb}</span> : null}
         {actions ? <div className="topbar-actions">{actions}</div> : null}
       </header>
