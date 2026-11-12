@@ -79,6 +79,8 @@ export function nextChatFixture(
 
 export const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
+    // Already aborted: an abort event will never come, so reject now (as fetch does).
+    if (signal?.aborted) return reject(signal.reason ?? new Error("aborted"));
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => {
       clearTimeout(timer);
