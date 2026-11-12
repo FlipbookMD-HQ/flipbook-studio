@@ -1,37 +1,24 @@
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  PRESETS,
+  FileConflictError,
+  hashBytes,
+  TEMPLATES,
+  ValidationError,
   createDeck,
   discoverPresentation,
-  renderExportDocument,
+  readSlide,
+  renderSlideDocument,
+  updateSlide,
   type Presentation,
+  type SlideDraft,
 } from "@flipbook-md/core";
 import type { CreateDeckRequest, DeckDetail, SlideDoc } from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { decodeDeckId, encodeDeckId, resolveInside } from "./paths.js";
 import { findDecks, loadError, type DeckEntry } from "./workspace.js";
 
-const SHADOW_SCRIPT =
-  /<script>document\.getElementById\("canvas"\)\.attachShadow\(\{mode:"open"\}\)\.innerHTML=(".*?");<\/script>/s;
-
-/**
- * Core's export document fills its canvas with a script. Preview iframes run with no
- * `allow-scripts`, so the payload moves into a declarative shadow root instead.
- * Replaced by core's renderSlideDocument in US-3.
- */
-export function scriptFree(documentHtml: string): string {
-  const match = SHADOW_SCRIPT.exec(documentHtml);
-  if (!match?.[1]) return documentHtml.replace(/<script\b[\s\S]*?<\/script>/gi, "");
-  const payload = JSON.parse(match[1]) as string;
-  return documentHtml
-    .replace(match[0], "")
-    .replace(
-      '<div id="canvas" class="canvas"></div>',
-      `<div id="canvas" class="canvas"><template shadowrootmode="open">${payload}</template></div>`,
-    );
-}
+const WRITE_ERRORS = new Set(["EACCES", "EPERM", "ENOSPC", "EROFS", "EDQUOT", "EISDIR", "EBUSY"]);
 
 export async function findDeck(root: string, id: string): Promise<DeckEntry> {
   const relative = decodeDeckId(id);
@@ -52,36 +39,69 @@ export async function loadDeck(deck: DeckEntry): Promise<Presentation> {
   }
 }
 
-async function hashFile(file: string): Promise<string> {
-  return crypto
-    .createHash("sha256")
-    .update(await fs.readFile(file))
-    .digest("hex");
+/** Folder decks use the manifest path; single-file decks use `#<index>`. */
+function slideIdAt(deck: DeckEntry, presentation: Presentation, index: number): string {
+  return deck.kind === "folder" ? presentation.slides[index]!.source : `#${index}`;
 }
 
-/** sha256 of every file the deck reads, keyed by its path inside the deck. */
-async function deckHashes(deck: DeckEntry, presentation: Presentation): Promise<Record<string, string>> {
-  if (deck.kind === "single") return { [path.basename(deck.absolute)]: await hashFile(deck.absolute) };
-  const files = ["presentation.yml", ...presentation.slides.map((slide) => slide.source)];
-  const hashes: Record<string, string> = {};
-  for (const file of files) hashes[file] = await hashFile(path.join(deck.absolute, file));
-  return hashes;
+function slideIndex(deck: DeckEntry, presentation: Presentation, slideId: string): number {
+  const index =
+    deck.kind === "folder"
+      ? presentation.slides.findIndex((slide) => slide.source === slideId)
+      : /^#\d+$/.test(slideId)
+        ? Number(slideId.slice(1))
+        : -1;
+  if (index < 0 || index >= presentation.slides.length) {
+    throw new StudioError(404, "SLIDE_NOT_FOUND", "No slide with that ID in this deck.", { path: slideId });
+  }
+  return index;
+}
+
+const assetBase = (id: string) => `/api/decks/${id}/files/`;
+
+function renderError(error: unknown): never {
+  if (error instanceof ValidationError) {
+    throw new StudioError(422, "RENDER_FAILED", error.message, {
+      details: { field: error.field ?? null, ...(error.fields ? { fields: error.fields } : {}) },
+    });
+  }
+  throw error;
+}
+
+async function slideDoc(
+  deck: DeckEntry,
+  presentation: Presentation,
+  id: string,
+  index: number,
+): Promise<{ doc: SlideDoc; hash: string }> {
+  const slideId = slideIdAt(deck, presentation, index);
+  const slide = presentation.slides[index]!;
+  const read = await readSlide(deck.absolute, slideId);
+  const doc: SlideDoc = {
+    id: slideId,
+    index,
+    title: slide.title,
+    template: slide.template,
+    type: slide.type ?? null,
+    html: await renderSlideDocument(presentation, index, { assetBase: assetBase(id) }),
+    draft: read.draft,
+    file: deck.kind === "folder" ? slideId : path.basename(deck.absolute),
+  };
+  return { doc, hash: read.hash };
 }
 
 export async function deckDetail(root: string, id: string): Promise<DeckDetail> {
   const deck = await findDeck(root, id);
   const presentation = await loadDeck(deck);
-  const preset = PRESETS.instagram;
-  const slides: SlideDoc[] = await Promise.all(
-    presentation.slides.map(async (slide, index) => ({
-      id: deck.kind === "folder" ? slide.source : `#${index}`,
-      index,
-      title: slide.title,
-      template: slide.template,
-      type: slide.type ?? null,
-      html: scriptFree(await renderExportDocument(presentation, slide, index, preset)),
-    })),
+  const docs = await Promise.all(
+    presentation.slides.map((_, index) => slideDoc(deck, presentation, id, index)),
   );
+  const hashes: Record<string, string> = {};
+  if (deck.kind === "folder") {
+    const manifest = await fs.readFile(path.join(deck.absolute, "presentation.yml"));
+    hashes["presentation.yml"] = hashBytes(manifest);
+  }
+  for (const { doc, hash } of docs) hashes[doc.file] = hash;
   return {
     id,
     path: deck.relative,
@@ -90,9 +110,69 @@ export async function deckDetail(root: string, id: string): Promise<DeckDetail> 
     theme: presentation.theme,
     group: presentation.group ?? null,
     style: presentation.style ?? null,
-    slides,
-    hashes: await deckHashes(deck, presentation),
+    slides: docs.map(({ doc }) => doc),
+    hashes,
+    templates: [...new Set([...Object.keys(TEMPLATES), ...Object.keys(presentation.templates ?? {})])],
+    types: Object.keys(presentation.blueprint?.types ?? {}),
   };
+}
+
+/** POST /api/decks/:id/preview: renders a draft (or the saved slide) as a standalone document. */
+export async function previewSlide(
+  root: string,
+  id: string,
+  slideId: string | null,
+  draft: SlideDraft | null,
+): Promise<{ html: string; violations: [] }> {
+  const deck = await findDeck(root, id);
+  const presentation = await loadDeck(deck);
+  const index = slideId == null ? 0 : slideIndex(deck, presentation, slideId);
+  try {
+    return {
+      html: await renderSlideDocument(presentation, index, { draft, assetBase: assetBase(id) }),
+      violations: [],
+    };
+  } catch (error) {
+    renderError(error);
+  }
+}
+
+/** PUT /api/decks/:id/slides/:slideId: hash-checked save that changes only what changed. */
+export async function saveSlide(
+  root: string,
+  id: string,
+  slideId: string,
+  baseHash: string,
+  draft: SlideDraft,
+): Promise<{ slide: SlideDoc; hashes: Record<string, string>; violations: [] }> {
+  const deck = await findDeck(root, id);
+  let saved: { slideId: string; hashes: Record<string, string> };
+  try {
+    saved = await updateSlide(deck.absolute, slideId, draft, baseHash);
+  } catch (error) {
+    if (error instanceof FileConflictError) {
+      throw new StudioError(409, "FILE_CONFLICT", "The slide changed on disk since you opened it.", {
+        path: slideId,
+        details: { currentHash: error.currentHash },
+      });
+    }
+    if (error instanceof ValidationError) {
+      if (error.code === "SLIDE_NOT_FOUND")
+        throw new StudioError(404, "SLIDE_NOT_FOUND", error.message, { path: slideId });
+      throw new StudioError(422, "VALIDATION_FAILED", error.message, {
+        details: { field: error.field ?? null, fields: error.fields ?? [] },
+      });
+    }
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code && WRITE_ERRORS.has(code)) {
+      throw new StudioError(500, "WRITE_FAILED", `Could not write ${slideId}: ${code}.`, { path: slideId });
+    }
+    throw error;
+  }
+  const presentation = await loadDeck(deck);
+  const index = slideIndex(deck, presentation, saved.slideId);
+  const { doc } = await slideDoc(deck, presentation, id, index);
+  return { slide: doc, hashes: saved.hashes, violations: [] };
 }
 
 /** Resolves a `files/*` request inside the deck folder (or the folder holding a single-file deck). */

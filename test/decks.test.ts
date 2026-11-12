@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { encodeDeckId } from "../src/server/paths.js";
-import { scriptFree } from "../src/server/decks.js";
 import { FOLDER_DECK, headers, makeApp, tempDir, write } from "./helpers.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/ws");
@@ -119,15 +118,5 @@ describe("GET /api/decks/:id/files/*", () => {
       headers: headers(),
     });
     expect(post.status).toBe(403);
-  });
-});
-
-describe("scriptFree", () => {
-  it("moves the export payload into a declarative shadow root and drops scripts", () => {
-    const html = `<body><div id="canvas" class="canvas"></div><script>document.getElementById("canvas").attachShadow({mode:"open"}).innerHTML=${JSON.stringify("<p>Hi</p>").replace(/</g, "\\u003c")};</script></body>`;
-    expect(scriptFree(html)).toBe(
-      '<body><div id="canvas" class="canvas"><template shadowrootmode="open"><p>Hi</p></template></div></body>',
-    );
-    expect(scriptFree("<p>x</p><script>alert(1)</script>")).toBe("<p>x</p>");
   });
 });

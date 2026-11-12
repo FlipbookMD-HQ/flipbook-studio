@@ -12,6 +12,10 @@ export const ERROR_CODES = [
   "DECK_EXISTS",
   "KIT_NOT_FOUND",
   "KIT_INVALID",
+  "SLIDE_NOT_FOUND",
+  "RENDER_FAILED",
+  "FILE_CONFLICT",
+  "WRITE_FAILED",
   "INTERNAL",
 ] as const;
 
@@ -59,7 +63,19 @@ export const WorkspaceSchema = z.object({
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
-// US-1 subset of SlideDoc. `html` is a standalone, script-free document for a sandboxed iframe.
+// A slide as the editor holds it (data-model: SlideDraft). Mirrors core's SlideDraft.
+export const SlideDraftSchema = z.object({
+  markdown: z.string().max(200_000),
+  template: z.string().nullable(),
+  type: z.string().nullable(),
+  notes: z.string().max(50_000),
+  title: z.string().max(200).nullable(),
+  directives: z.record(z.string()),
+});
+export type SlideDraft = z.infer<typeof SlideDraftSchema>;
+
+// `title` and `template` are as rendered; `draft` is what the file says. `html` is a standalone,
+// script-free document for a sandboxed iframe. `file` is the key into DeckDetail.hashes.
 export const SlideDocSchema = z.object({
   id: z.string(),
   index: z.number().int().nonnegative(),
@@ -67,6 +83,8 @@ export const SlideDocSchema = z.object({
   template: z.string(),
   type: z.string().nullable(),
   html: z.string(),
+  draft: SlideDraftSchema,
+  file: z.string(),
 });
 export type SlideDoc = z.infer<typeof SlideDocSchema>;
 
@@ -80,6 +98,10 @@ export const DeckDetailSchema = z.object({
   style: z.string().nullable(),
   slides: z.array(SlideDocSchema),
   hashes: z.record(z.string()),
+  /** Template names this deck can use: built-ins, the deck's templates.yml and its kit. */
+  templates: z.array(z.string()),
+  /** Page types its blueprint defines (empty without a blueprint). */
+  types: z.array(z.string()),
 });
 export type DeckDetail = z.infer<typeof DeckDetailSchema>;
 
@@ -93,6 +115,24 @@ export const CreateDeckRequestSchema = z.object({
   group: z.string().trim().min(1).nullable(),
 });
 export type CreateDeckRequest = z.infer<typeof CreateDeckRequestSchema>;
+
+const Hash = z.string().regex(/^[0-9a-f]{64}$/, "Use the sha256 from the last read.");
+export const ViolationSchema = z.object({ source: z.string(), code: z.string(), message: z.string() });
+
+// POST /api/decks/:id/preview (US-3). Violations stay empty until US-5.
+export const PreviewRequestSchema = z.object({
+  slideId: z.string().nullable(),
+  draft: SlideDraftSchema.nullable(),
+});
+export const PreviewResponseSchema = z.object({ html: z.string(), violations: z.array(ViolationSchema) });
+
+// PUT /api/decks/:id/slides/:slideId (US-3).
+export const SaveSlideRequestSchema = z.object({ baseHash: Hash, draft: SlideDraftSchema });
+export const SaveSlideResponseSchema = z.object({
+  slide: SlideDocSchema,
+  hashes: z.record(z.string()),
+  violations: z.array(ViolationSchema),
+});
 
 export const TOKEN_HEADER = "x-flipbook-token";
 export const TOKEN_META = "flipbook-token";

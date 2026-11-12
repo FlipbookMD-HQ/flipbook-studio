@@ -5,10 +5,15 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { ZodError } from "zod";
 import { assetMime } from "@flipbook-md/core";
-import { CreateDeckRequestSchema, TOKEN_PLACEHOLDER } from "../shared/api.js";
+import {
+  CreateDeckRequestSchema,
+  PreviewRequestSchema,
+  SaveSlideRequestSchema,
+  TOKEN_PLACEHOLDER,
+} from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
-import { createWorkspaceDeck, deckDetail, deckFile } from "./decks.js";
+import { createWorkspaceDeck, deckDetail, deckFile, previewSlide, saveSlide } from "./decks.js";
 import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
 
@@ -63,6 +68,12 @@ export function errorHandler(log: (line: string) => void) {
     log(`${requestId} INTERNAL ${error.stack ?? error.message}`);
     return sendError(c, new StudioError(500, "INTERNAL", `Something went wrong. Request ID: ${requestId}.`));
   };
+}
+
+async function jsonBody(c: Context<Env>): Promise<unknown> {
+  return c.req.json().catch(() => {
+    throw new StudioError(422, "VALIDATION_FAILED", "The request body is not JSON.");
+  });
 }
 
 export function createApp(options: AppOptions) {
@@ -124,11 +135,22 @@ export function createApp(options: AppOptions) {
   );
   api.get("/workspace", async (c) => c.json(await scanWorkspace(options.workspace, options.library)));
   api.get("/decks/:id", async (c) => c.json(await deckDetail(options.workspace, c.req.param("id"))));
+  api.post("/decks/:id/preview", async (c) => {
+    const { slideId, draft } = PreviewRequestSchema.parse(await jsonBody(c));
+    return c.json(await previewSlide(options.workspace, c.req.param("id"), slideId, draft));
+  });
+  // Folder slide IDs contain slashes ("slides/01.slide.md"); the client percent-encodes them.
+  api.put("/decks/:id/slides/:slideId{.+}", async (c) => {
+    const { baseHash, draft } = SaveSlideRequestSchema.parse(await jsonBody(c));
+    return c.json(
+      await saveSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash, draft),
+    );
+  });
   api.post("/decks", async (c) => {
-    const body: unknown = await c.req.json().catch(() => {
-      throw new StudioError(422, "VALIDATION_FAILED", "The request body is not JSON.");
-    });
-    const created = await createWorkspaceDeck(options.workspace, CreateDeckRequestSchema.parse(body));
+    const created = await createWorkspaceDeck(
+      options.workspace,
+      CreateDeckRequestSchema.parse(await jsonBody(c)),
+    );
     return c.json(await deckDetail(options.workspace, created.id), 201);
   });
   api.all("*", () => {
@@ -138,7 +160,8 @@ export function createApp(options: AppOptions) {
 
   app.get("*", async (c) => {
     const pathname = new URL(c.req.url).pathname;
-    if (pathname !== "/" && path.extname(pathname)) {
+    // Vite's bundle lives under /assets/. Every other path is a client route (slide IDs end in .md).
+    if (pathname.startsWith("/assets/")) {
       const file = await resolveInside(options.uiDir, decodeURIComponent(pathname.slice(1))).catch(
         () => null,
       );
