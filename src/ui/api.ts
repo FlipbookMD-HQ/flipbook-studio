@@ -3,6 +3,12 @@ import {
   DeckDetailSchema,
   AddSlideResponseSchema,
   ExportJobSchema,
+  KitDocSchema,
+  KitPreviewResponseSchema,
+  type CreateKitRequest,
+  type KitKind,
+  type KitScope,
+  type UpdateKitRequest,
   ExportsInfoSchema,
   JobEventSchema,
   PresentResponseSchema,
@@ -151,3 +157,29 @@ export async function followJob(
     }
   }
 }
+
+const kitUrl = (kind: KitKind, name: string, scope: KitScope, deckId?: string) =>
+  `/api/kits/${kind}/${encodeURIComponent(name)}?scope=${scope}${deckId ? `&deckId=${encodeURIComponent(deckId)}` : ""}`;
+
+export const getKit = (kind: KitKind, name: string, scope: KitScope, deckId?: string) =>
+  apiFetch(kitUrl(kind, name, scope, deckId), KitDocSchema);
+
+export const createKit = (kind: KitKind, request: CreateKitRequest) =>
+  apiFetch(`/api/kits/${kind}`, KitDocSchema, { method: "POST", body: JSON.stringify(request) });
+
+export const updateKit = (kind: KitKind, name: string, request: UpdateKitRequest) =>
+  apiFetch(`/api/kits/${kind}/${encodeURIComponent(name)}`, KitDocSchema, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+
+export const previewKit = (
+  kind: KitKind,
+  request: { source: string; deckId?: string; scope?: "library" | "builtin" },
+  signal?: AbortSignal,
+) =>
+  apiFetch(`/api/kits/${kind}/preview`, KitPreviewResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(request),
+    signal,
+  });

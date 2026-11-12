@@ -27,5 +27,10 @@ export default defineConfig({
       command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-export fixtures/edit && "${process.execPath}" bin/flipbook-studio.js .e2e-export --no-open --port 4395`,
       env: { FLIPBOOK_HOME: "fixtures/library", PATH: "/usr/bin:/bin" },
     },
+    // Theme editor: a fresh workspace and a fresh, empty library.
+    {
+      ...studio(".e2e-kits", 4396),
+      command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-kits fixtures/kits && "${process.execPath}" e2e/fresh-workspace.mjs .e2e-library && "${process.execPath}" bin/flipbook-studio.js .e2e-kits --no-open --port 4396 --library .e2e-library`,
+    },
   ],
 });

@@ -4,6 +4,7 @@ import { parse as parseYaml } from "yaml";
 import { TEMPLATES, loadPresentation, templateLibraryDirs, themeLibraryDirs } from "@flipbook-md/core";
 import type { ApiError, DeckSummary, KitRef, Workspace } from "../shared/api.js";
 import { encodeDeckId } from "./paths.js";
+import { deckKits } from "./kits.js";
 
 export const TMP_DIR = ".flipbook-studio-tmp";
 
@@ -57,7 +58,12 @@ export function loadError(error: unknown, relative: string): ApiError {
 }
 
 export async function summarize(deck: DeckEntry): Promise<DeckSummary> {
-  const base = { id: encodeDeckId(deck.relative), path: deck.relative, kind: deck.kind };
+  const base = {
+    id: encodeDeckId(deck.relative),
+    path: deck.relative,
+    kind: deck.kind,
+    deckKits: await deckKits(deck),
+  };
   try {
     // Blueprint violations don't stop a deck from loading in Studio; they show in the editor.
     const { presentation } = await loadPresentation(deck.absolute);
