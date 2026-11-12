@@ -1,0 +1,6 @@
+# Order test deck
+title: Order Deck
+slides:
+  - slides/01_first.slide.md # opening
+  - slides/02_second.slide.md
+  - slides/03_third.slide.md

@@ -16,6 +16,7 @@ export const ERROR_CODES = [
   "RENDER_FAILED",
   "FILE_CONFLICT",
   "WRITE_FAILED",
+  "LAST_SLIDE",
   "INTERNAL",
 ] as const;
 
@@ -133,6 +134,23 @@ export const SaveSlideResponseSchema = z.object({
   hashes: z.record(z.string()),
   violations: z.array(ViolationSchema),
 });
+
+// US-4 structure changes. `baseHash` is presentation.yml's hash (folder) or the single file's.
+// Each response carries every slide and hash, since single-file slide IDs are positions.
+export const StructureResponseSchema = z.object({
+  slides: z.array(SlideDocSchema),
+  hashes: z.record(z.string()),
+  violations: z.array(ViolationSchema),
+});
+export type StructureResponse = z.infer<typeof StructureResponseSchema>;
+export const AddSlideRequestSchema = z.object({
+  baseHash: Hash,
+  afterSlideId: z.string().nullable(),
+  draft: SlideDraftSchema,
+});
+export const AddSlideResponseSchema = StructureResponseSchema.extend({ slide: SlideDocSchema });
+export const OrderRequestSchema = z.object({ baseHash: Hash, slideIds: z.array(z.string()).max(1000) });
+export const DeleteSlideQuerySchema = z.object({ baseHash: Hash });
 
 export const TOKEN_HEADER = "x-flipbook-token";
 export const TOKEN_META = "flipbook-token";
