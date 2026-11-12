@@ -997,3 +997,141 @@ a.button.primary {
   font-size: 0.85rem;
   white-space: nowrap;
 }
+
+/* US-12: AI rewrite and proposal review. */
+.editor-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.ai-panel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ai-menu {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 18rem;
+  right: 0;
+  top: calc(100% + 0.25rem);
+}
+.ai-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.ai-row input,
+.ai-row select {
+  flex: 1;
+  min-width: 0;
+}
+.ai-result {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 20;
+  width: min(56rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 6rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
+}
+.ai-tokens,
+.op-text {
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 0.85rem;
+}
+.muted {
+  color: var(--muted);
+}
+.proposal-head,
+.op-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.proposal-head h2,
+.op-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.op-buttons {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+.op-card {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.op-card.applied {
+  border-color: #3f8f63;
+}
+.op-card.stale,
+.op-card.invalid {
+  border-color: var(--danger);
+}
+.op-card.stale .op-body {
+  opacity: 0.5;
+}
+.op-state {
+  color: var(--muted);
+}
+.op-body {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.op-violations {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: rgb(255 138 138 / 10%);
+  color: var(--danger);
+}
+.op-violations p,
+.op-violations ul {
+  margin: 0 0 0.5rem;
+}
+.op-group summary {
+  margin-top: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.diff {
+  margin-top: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.diff-heads {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0.25rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  background: var(--bg);
+}
+.diff .cm-mergeView {
+  max-height: 20rem;
+  overflow: auto;
+}
+@media (max-width: 640px) {
+  .ai-result {
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+  }
+}

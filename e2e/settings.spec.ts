@@ -1,45 +1,14 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { startLlmStub, type LlmStub } from "../test/support/llm-stub";
+import { startStudio as startStudioOn, stopStudio } from "./support/studio";
 
 const deckId = Buffer.from("system-design.slide.md", "utf8").toString("base64url");
 
-/** A Studio of its own, so the test can restart it with the same settings folder. */
-async function startStudio(
-  workspace: string,
-  configDir: string,
-): Promise<{ url: string; banner: string; child: ChildProcess }> {
-  const child = spawn(
-    process.execPath,
-    ["bin/flipbook-studio.js", workspace, "--no-open", "--port", "4400"],
-    {
-      env: {
-        ...process.env,
-        FLIPBOOK_HOME: path.resolve("fixtures/library"),
-        FLIPBOOK_STUDIO_CONFIG_DIR: configDir,
-      },
-    },
-  );
-  let out = "";
-  const url = await new Promise<string>((resolve, reject) => {
-    child.stdout!.on("data", (chunk) => {
-      out += String(chunk);
-      const match = /URL: +(http:\/\/\S+)/.exec(out);
-      if (match && /LLM:.*\n/.test(out)) resolve(match[1]!);
-    });
-    child.on("exit", (code) => reject(new Error(`Studio exited ${code}: ${out}`)));
-  });
-  return { url, banner: out, child };
-}
-const stop = (child: ChildProcess) =>
-  new Promise<void>((resolve) => {
-    if (child.exitCode != null) return resolve();
-    child.once("exit", () => resolve());
-    child.kill();
-  });
+const startStudio = (workspace: string, configDir: string) => startStudioOn(workspace, configDir, 4400);
+const stop = stopStudio;
 
 let stub: LlmStub;
 let workspace: string;
@@ -61,10 +30,12 @@ test.afterEach(async () => {
   await stub.close();
 });
 
-const aiButton = (page: Page) => page.getByTestId("ai-action").getByRole("button", { name: /Ask AI/ });
+const aiButton = (page: Page) =>
+  page.getByTestId("ai-action").getByRole("button", { name: "AI", exact: true });
+const slidePage = () => `${studio.url}decks/${deckId}/slides/%230`;
 
 test("connect a model: list, test, save; AI buttons enable; settings survive a restart", async ({ page }) => {
-  await page.goto(`${studio.url}decks/${deckId}`);
+  await page.goto(slidePage());
   await expect(aiButton(page)).toBeDisabled();
   await page.getByRole("link", { name: "Set up a local model" }).click();
   await expect(page).toHaveURL(/\/settings$/);
@@ -85,11 +56,11 @@ test("connect a model: list, test, save; AI buttons enable; settings survive a r
 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Saved. AI features use llama3.2:1b.");
-  await page.goto(`${studio.url}decks/${deckId}`);
+  await page.goto(slidePage());
   await expect(aiButton(page)).toBeEnabled();
   await expect(page.getByRole("link", { name: "Set up a local model" })).toHaveCount(0);
   await aiButton(page).click();
-  await expect(page.getByTestId("ai-note")).toBeVisible();
+  await expect(page.getByRole("menu", { name: "AI rewrite" })).toBeVisible();
 
   // Restart Studio with the same settings folder.
   await stop(studio.child);
