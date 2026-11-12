@@ -32,5 +32,10 @@ export default defineConfig({
       ...studio(".e2e-kits", 4396),
       command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-kits fixtures/kits && "${process.execPath}" e2e/fresh-workspace.mjs .e2e-library && "${process.execPath}" bin/flipbook-studio.js .e2e-kits --no-open --port 4396 --library .e2e-library`,
     },
+    // Blueprint editor: a copy of fixtures/ws (blueprint-talk) and its own empty library.
+    {
+      ...studio(".e2e-blueprints", 4397),
+      command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-blueprints fixtures/ws && "${process.execPath}" e2e/fresh-workspace.mjs .e2e-bp-library && "${process.execPath}" bin/flipbook-studio.js .e2e-blueprints --no-open --port 4397 --library .e2e-bp-library`,
+    },
   ],
 });
