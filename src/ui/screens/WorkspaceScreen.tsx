@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import type { DeckSummary } from "../../shared/api";
 import { ErrorNotice, Shell } from "./Shell";
+import { NewDeckDialog } from "./NewDeckDialog";
 
 function DeckCard({ deck }: { deck: DeckSummary }) {
   if (deck.error) {
@@ -29,6 +31,7 @@ function DeckCard({ deck }: { deck: DeckSummary }) {
 
 export function WorkspaceScreen() {
   const workspace = useQuery({ queryKey: ["workspace"], queryFn: getWorkspace });
+  const [creating, setCreating] = useState(false);
 
   if (workspace.isPending) return <Shell>Loading workspace…</Shell>;
   if (workspace.isError) {
@@ -43,21 +46,23 @@ export function WorkspaceScreen() {
     );
   }
 
-  const { root, decks } = workspace.data;
+  const { root, decks, library } = workspace.data;
   return (
     <Shell crumb={root}>
       <div className="heading-row">
         <h1>Decks</h1>
-        {/* Creating decks arrives in US-2. */}
-        <button type="button" className="primary" disabled title="Coming soon">
+        <button type="button" className="primary" onClick={() => setCreating(true)}>
           New deck
         </button>
       </div>
       {decks.length === 0 ? (
         <section className="empty" data-testid="empty-state">
           <h2>No decks in this folder yet</h2>
-          <p>Studio lists `*.slide.md` files and folders with a `presentation.yml` at the top of {root}.</p>
-          <button type="button" className="primary" disabled title="Coming soon">
+          <p>
+            Studio lists <code>*.slide.md</code> files and folders with a <code>presentation.yml</code> at the
+            top of {root}.
+          </p>
+          <button type="button" className="primary" onClick={() => setCreating(true)}>
             New deck
           </button>
         </section>
@@ -68,6 +73,7 @@ export function WorkspaceScreen() {
           ))}
         </ul>
       )}
+      {creating ? <NewDeckDialog kits={library.groups} onClose={() => setCreating(false)} /> : null}
     </Shell>
   );
 }

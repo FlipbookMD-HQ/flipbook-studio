@@ -1,10 +1,16 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { PRESETS, discoverPresentation, renderExportDocument, type Presentation } from "@flipbook-md/core";
-import type { DeckDetail, SlideDoc } from "../shared/api.js";
+import {
+  PRESETS,
+  createDeck,
+  discoverPresentation,
+  renderExportDocument,
+  type Presentation,
+} from "@flipbook-md/core";
+import type { CreateDeckRequest, DeckDetail, SlideDoc } from "../shared/api.js";
 import { StudioError } from "./errors.js";
-import { decodeDeckId, resolveInside } from "./paths.js";
+import { decodeDeckId, encodeDeckId, resolveInside } from "./paths.js";
 import { findDecks, loadError, type DeckEntry } from "./workspace.js";
 
 const SHADOW_SCRIPT =
@@ -97,4 +103,33 @@ export async function deckFile(root: string, id: string, relative: string): Prom
   const stat = await fs.stat(file).catch(() => null);
   if (!stat?.isFile()) throw new StudioError(404, "NOT_FOUND", "File not found.", { path: relative });
   return file;
+}
+
+/** Core error codes from createDeck and the HTTP status each maps to. */
+const CREATE_ERRORS = {
+  DECK_EXISTS: 409,
+  KIT_NOT_FOUND: 404,
+  KIT_INVALID: 422,
+  VALIDATION_FAILED: 422,
+} as const;
+
+/** POST /api/decks: creates the deck through core and returns its ID. */
+export async function createWorkspaceDeck(root: string, request: CreateDeckRequest): Promise<{ id: string }> {
+  try {
+    const created = await createDeck(root, request);
+    const relative = path.relative(await fs.realpath(root), created.path);
+    return { id: encodeDeckId(relative) };
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code in CREATE_ERRORS) {
+      const known = code as keyof typeof CREATE_ERRORS;
+      const where = (error as { path?: string }).path;
+      const fields = (error as { fields?: unknown }).fields;
+      throw new StudioError(CREATE_ERRORS[known], known, (error as Error).message, {
+        ...(where ? { path: path.basename(where) } : {}),
+        ...(fields ? { details: { fields } } : {}),
+      });
+    }
+    throw error;
+  }
 }

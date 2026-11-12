@@ -1,4 +1,5 @@
 import {
+  type CreateDeckRequest,
   DeckDetailSchema,
   ErrorEnvelopeSchema,
   TOKEN_HEADER,
@@ -42,3 +43,6 @@ export async function apiFetch<T>(url: string, schema: z.ZodType<T>, init: Reque
 
 export const getWorkspace = () => apiFetch("/api/workspace", WorkspaceSchema);
 export const getDeck = (id: string) => apiFetch(`/api/decks/${encodeURIComponent(id)}`, DeckDetailSchema);
+
+export const createDeck = (request: CreateDeckRequest) =>
+  apiFetch("/api/decks", DeckDetailSchema, { method: "POST", body: JSON.stringify(request) });
