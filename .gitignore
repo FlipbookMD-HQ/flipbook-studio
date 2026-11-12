@@ -9,3 +9,5 @@ playwright-report/
 .e2e-export/
 .e2e-kits/
 .e2e-library/
+.e2e-blueprints/
+.e2e-bp-library/
