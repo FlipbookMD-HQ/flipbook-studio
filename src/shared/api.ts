@@ -210,10 +210,14 @@ export type CreateKitRequest = z.infer<typeof CreateKitRequestSchema>;
 export const UpdateKitRequestSchema = z.object({
   scope: KitScopeSchema,
   deckId: z.string().optional(),
-  baseHash: z.string().regex(/^[0-9a-f]{64}$/),
+  /** null only when a deck-template patch creates templates.yml. */
+  baseHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable(),
   source: KIT_SOURCE.optional(),
-  /** RFC 7386 merge patch for YAML kits (US-8). */
-  patch: z.record(z.unknown()).optional(),
+  /** RFC 7386 merge patch for YAML kits. A deck template patch may be null (removes it). */
+  patch: z.record(z.unknown()).nullable().optional(),
 });
 export type UpdateKitRequest = z.infer<typeof UpdateKitRequestSchema>;
 export const KitPreviewRequestSchema = z.object({
@@ -222,6 +226,8 @@ export const KitPreviewRequestSchema = z.object({
   deckId: z.string().optional(),
   /** Where a theme's url() files live without a deck: the library (default) or the built-ins. */
   scope: z.enum(["library", "builtin"]).optional(),
+  /** Template previews: the template's name (defaults to "preview"). */
+  name: z.string().max(60).optional(),
 });
 export const KitPreviewResponseSchema = z.object({
   html: z.string(),
