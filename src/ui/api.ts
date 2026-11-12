@@ -5,6 +5,9 @@ import {
   ExportJobSchema,
   KitDocSchema,
   KitPreviewResponseSchema,
+  RenameGroupResponseSchema,
+  type CopyGroupRequest,
+  type RenameGroupRequest,
   type CreateKitRequest,
   type KitKind,
   type KitScope,
@@ -182,4 +185,16 @@ export const previewKit = (
     method: "POST",
     body: JSON.stringify(request),
     signal,
+  });
+
+// US-10: media kits.
+export const copyGroup = (name: string, request: CopyGroupRequest) =>
+  apiFetch(`/api/kits/group/${encodeURIComponent(name)}/copy`, KitDocSchema, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+export const renameGroup = (name: string, request: RenameGroupRequest) =>
+  apiFetch(`/api/kits/group/${encodeURIComponent(name)}/rename`, RenameGroupResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(request),
   });

@@ -860,3 +860,107 @@ a.button.primary {
   padding-left: 1.1rem;
   color: var(--danger);
 }
+
+/* US-10: media kit editor */
+.kit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 42%);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .kit-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.kit-layout > section {
+  min-width: 0;
+}
+.kit-layout .tabs {
+  flex-wrap: wrap;
+}
+.kit-band .field.compact input,
+.kit-band .field.compact select {
+  max-width: 100%;
+}
+.kit-preview {
+  position: sticky;
+  top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--panel);
+}
+.kit-preview h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+.kit-preview iframe {
+  width: 100%;
+  height: 560px;
+  border: 0;
+  border-radius: 8px;
+  background: #141a28;
+}
+.kit-section {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.kit-section textarea,
+.kit-section .field input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+}
+.kit-template {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.6rem;
+}
+.kit-template .grid-editor {
+  width: 180px;
+}
+.kit-template-fields {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+.kit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+}
+.kit-band {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+}
+.kit-band legend {
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+.tab-problems {
+  color: var(--danger);
+}
+.choices {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+.choices legend {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}

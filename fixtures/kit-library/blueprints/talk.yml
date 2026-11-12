@@ -1,0 +1,17 @@
+# A short talk: a cover, two to four points, a closing quote.
+pages:
+  - type: cover
+  - type: point
+    repeat:
+      min: 2
+      max: 4
+  - type: closing
+types:
+  cover:
+    template: cover
+  point:
+    template: aside
+    allow: [heading, paragraph, list]
+  closing:
+    template: quote
+    allow: [heading, blockquote, paragraph]

@@ -11,3 +11,5 @@ playwright-report/
 .e2e-library/
 .e2e-blueprints/
 .e2e-bp-library/
+.e2e-media/
+.e2e-media-library/

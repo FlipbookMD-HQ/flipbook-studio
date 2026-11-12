@@ -18,6 +18,9 @@ import {
   loadPresentation,
   readKit,
   renderSampleDocument,
+  copyGroup as coreCopyGroup,
+  findDecksUsingGroup,
+  renameGroup as coreRenameGroup,
   writeKit,
   type KitRef as CoreKitRef,
 } from "@flipbook-md/core";
@@ -208,6 +211,7 @@ export async function previewKit(
 ): Promise<KitPreviewResponse> {
   if (kind === "template") return previewTemplate(root, request);
   if (kind === "blueprint") return previewBlueprint(root, request);
+  if (kind === "group") return previewGroup(request);
   if (kind !== "theme") {
     throw new StudioError(422, "VALIDATION_FAILED", `Previewing a ${kind} isn't available yet.`, {
       details: { field: "kind" },
@@ -219,6 +223,107 @@ export async function previewKit(
   }
   const assetRoot = path.join(request.scope === "builtin" ? libraryRoot() : flipbookHome(), "themes");
   return { html: await renderSampleDocument({ themeCss: request.source, assetRoot }), errors: [] };
+}
+
+/** The CSS of a theme by name and the folder its url()s resolve in: the library's, else the built-in. */
+async function namedTheme(name: string): Promise<{ css: string; assetRoot: string } | null> {
+  for (const scope of ["library", "builtin"] as const) {
+    try {
+      const theme = await readKit({ kind: "theme", name, scope });
+      return { css: theme.source, assetRoot: path.dirname(theme.path) };
+    } catch {
+      // Not in this scope, or not a valid name.
+    }
+  }
+  return null;
+}
+
+/** A group preview: one sample slide per blueprint page step, in the group's style theme. */
+async function previewGroup(request: { source: string; name?: string }): Promise<KitPreviewResponse> {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(request.source);
+  } catch (error) {
+    return { html: "", errors: [`Not valid YAML: ${(error as Error).message.split("\n")[0]}`] };
+  }
+  const group = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  const theme = typeof group.style === "string" ? await namedTheme(group.style) : null;
+  const errors = theme || typeof group.style !== "string" ? [] : [`Theme "${group.style}" was not found.`];
+  try {
+    const html = await renderSampleDocument({
+      group: parsed,
+      themeCss: theme?.css ?? "",
+      ...(theme ? { assetRoot: theme.assetRoot } : {}),
+    });
+    return { html, errors };
+  } catch (error) {
+    return { html: "", errors: [(error as Error).message, ...errors] };
+  }
+}
+
+/** POST /api/kits/group/:name/copy: copies a built-in or library group into the library. */
+export async function copyGroup(
+  root: string,
+  name: string,
+  request: { toName: string; scope?: "library" | "builtin" },
+): Promise<KitDoc> {
+  let scope = request.scope;
+  if (!scope) {
+    scope = "builtin";
+    try {
+      await readKit({ kind: "group", name, scope: "library" });
+      scope = "library";
+    } catch {
+      // Not in the library: copy the built-in.
+    }
+  }
+  try {
+    await coreCopyGroup({ name, scope }, request.toName);
+  } catch (error) {
+    kitFailure(
+      error,
+      error instanceof KitNotFoundError ? `media kit "${name}"` : `A media kit named "${request.toName}"`,
+    );
+  }
+  return doc(root, "group", request.toName, "library");
+}
+
+/** POST /api/kits/group/:name/rename: renames a library group and lists the decks still on the old name. */
+export async function renameGroup(
+  root: string,
+  name: string,
+  request: { toName: string; baseHash: string },
+): Promise<{ kit: KitDoc; decksUsingOldName: string[] }> {
+  try {
+    await coreRenameGroup({ name, scope: "library" }, request.toName, request.baseHash);
+  } catch (error) {
+    if (error instanceof KitNotFoundError || (error as NodeJS.ErrnoException).code === "ENOENT") {
+      // Only built-ins are left: they are read-only.
+      try {
+        await readKit({ kind: "group", name, scope: "builtin" });
+      } catch {
+        throw new StudioError(404, "KIT_NOT_FOUND", `No media kit "${name}".`);
+      }
+      kitFailure(new BuiltInReadOnlyError(name), `media kit "${name}"`);
+    }
+    kitFailure(
+      error,
+      error instanceof KitExistsError ? `A media kit named "${request.toName}"` : `media kit "${name}"`,
+    );
+  }
+  const decks = await findDecks(root);
+  const using = new Set(
+    await findDecksUsingGroup(
+      name,
+      decks.map((deck) => deck.absolute),
+    ),
+  );
+  return {
+    kit: await doc(root, "group", request.toName, "library"),
+    decksUsingOldName: decks
+      .filter((deck) => using.has(deck.absolute))
+      .map((deck) => encodeDeckId(deck.relative)),
+  };
 }
 
 /**
