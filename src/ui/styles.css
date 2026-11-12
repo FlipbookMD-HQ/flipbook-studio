@@ -535,3 +535,111 @@ button:disabled {
   margin: 0.5rem 0 0;
   padding-left: 1.2rem;
 }
+
+/* US-7: kits and the theme editor */
+.kits-nav a {
+  color: var(--muted);
+}
+.kit-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.badge {
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  color: var(--muted);
+}
+.badge-built-in {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.theme-editor {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(0, 1.4fr);
+  gap: 1rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .theme-editor {
+    grid-template-columns: 1fr;
+  }
+}
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+.tabs [aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tokens {
+  display: grid;
+  gap: 0.5rem;
+}
+.token-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
+  gap: 0.5rem;
+  align-items: center;
+}
+.token-row input:not([type="color"]) {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  min-width: 0;
+}
+.token-row input[type="color"] {
+  width: 2.2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+}
+.theme-preview iframe {
+  width: 100%;
+  height: 760px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0006;
+}
+.warning {
+  color: #f5c66b;
+}
+.topbar {
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+.topbar-actions {
+  flex-wrap: wrap;
+}
+.topbar-actions .badge,
+.topbar-actions button {
+  white-space: nowrap;
+}
+.tabs button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.3rem 0.8rem;
+}
+.theme-preview iframe {
+  background: var(--panel);
+}
+@media (max-width: 600px) {
+  .topbar {
+    padding: 0.75rem 1rem;
+  }
+  .theme-preview iframe {
+    height: 520px;
+  }
+}
