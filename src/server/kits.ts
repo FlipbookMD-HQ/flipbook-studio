@@ -10,6 +10,8 @@ import {
   ReservedNameError,
   ValidationError,
   libraryRoot,
+  evaluateDraftBlueprint,
+  parseKit,
   parsePlacement,
   TEMPLATES,
   flipbookHome,
@@ -205,6 +207,7 @@ export async function previewKit(
   request: { source: string; deckId?: string; scope?: "library" | "builtin"; name?: string },
 ): Promise<KitPreviewResponse> {
   if (kind === "template") return previewTemplate(root, request);
+  if (kind === "blueprint") return previewBlueprint(root, request);
   if (kind !== "theme") {
     throw new StudioError(422, "VALIDATION_FAILED", `Previewing a ${kind} isn't available yet.`, {
       details: { field: "kind" },
@@ -216,6 +219,29 @@ export async function previewKit(
   }
   const assetRoot = path.join(request.scope === "builtin" ? libraryRoot() : flipbookHome(), "themes");
   return { html: await renderSampleDocument({ themeCss: request.source, assetRoot }), errors: [] };
+}
+
+/**
+ * A blueprint preview: with deckId, the deck's slides that would fail (`affectedSlides`);
+ * without, only whether the blueprint is valid against the library's templates.
+ */
+async function previewBlueprint(
+  root: string,
+  request: { source: string; deckId?: string },
+): Promise<KitPreviewResponse> {
+  if (request.deckId) {
+    const { presentation } = await loadDeck(await findDeck(root, request.deckId));
+    const result = evaluateDraftBlueprint(presentation, request.source);
+    return result.errors
+      ? { html: "", errors: result.errors }
+      : { html: "", errors: [], affectedSlides: result.violations };
+  }
+  try {
+    await parseKit({ kind: "blueprint", name: "draft", scope: "library" }, request.source);
+    return { html: "", errors: [] };
+  } catch (error) {
+    return { html: "", errors: [(error as Error).message] };
+  }
 }
 
 const TEMPLATE_SAMPLE =

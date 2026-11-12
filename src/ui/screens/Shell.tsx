@@ -20,6 +20,7 @@ export function Shell({
         <nav className="kits-nav" aria-label="Kits">
           <Link to="/kits/themes">Themes</Link>
           <Link to="/kits/templates">Templates</Link>
+          <Link to="/kits/blueprints">Blueprints</Link>
         </nav>
         {crumb ? <span className="crumb">{crumb}</span> : null}
         {actions ? <div className="topbar-actions">{actions}</div> : null}

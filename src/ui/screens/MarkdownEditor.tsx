@@ -17,7 +17,8 @@ export function CodeEditor({
 }: {
   value: string;
   onChange: (value: string) => void;
-  language: "markdown" | "css";
+  /** yaml is shown as plain text (no extra language package). */
+  language: "markdown" | "css" | "yaml";
   label: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -31,7 +32,7 @@ export function CodeEditor({
       doc: value,
       extensions: [
         basicSetup,
-        language === "css" ? css() : markdown(),
+        ...(language === "css" ? [css()] : language === "markdown" ? [markdown()] : []),
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ "aria-label": label }),
         EditorView.updateListener.of((update) => {
