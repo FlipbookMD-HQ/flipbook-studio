@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiError, ExportJob, ExportRequest, ExportsInfo, Violation } from "../../shared/api";
 import { ApiRequestError, cancelJob, followJob, getExports, presentDeck, startExport } from "../api";
 import { ErrorNotice } from "./Shell";
+import { AiAction } from "../ai";
 
 const asApiError = (error: unknown): ApiError =>
   error instanceof ApiRequestError ? error.error : { code: "INTERNAL", message: (error as Error).message };
@@ -24,6 +25,7 @@ export function DeckActions({
   slideIndex: number;
   disabled?: boolean;
 }) {
+  const [aiNote, setAiNote] = useState(false);
   const [presentError, setPresentError] = useState<ApiError | null>(null);
   const [announcerUrl, setAnnouncerUrl] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -50,6 +52,15 @@ export function DeckActions({
 
   return (
     <>
+      <AiAction onClick={() => setAiNote(true)}>Ask AI</AiAction>
+      {aiNote ? (
+        <div className="popover" role="status" data-testid="ai-note">
+          <p>Your local model is connected. AI help for slides arrives in the next update.</p>
+          <button type="button" onClick={() => setAiNote(false)}>
+            OK
+          </button>
+        </div>
+      ) : null}
       <button type="button" onClick={present} disabled={disabled}>
         Present
       </button>

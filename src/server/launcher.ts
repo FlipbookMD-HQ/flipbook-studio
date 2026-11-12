@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { serve, type ServerType } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { createToken } from "./guard.js";
+import { SettingsStore, configDir } from "./settings.js";
+import { normalizeBaseUrl } from "./llm/provider.js";
 
 export const DEFAULT_PORT = 4321;
 export const HOST = "127.0.0.1";
@@ -147,6 +149,13 @@ export function uiDir(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
 }
 
+/** The banner's LLM line: `<model> @ <baseUrl>`, or why there is none. */
+export function llmBanner(settings: SettingsStore): string {
+  const llm = settings.current().llm;
+  if (!llm) return "not configured (Settings in the app)";
+  return `${llm.model ?? "no model chosen"} @ ${normalizeBaseUrl(llm.baseUrl)}`;
+}
+
 export interface Launched {
   server: ServerType;
   url: string;
@@ -165,6 +174,7 @@ export async function launch(
   // Core reads the library location from FLIPBOOK_HOME.
   process.env.FLIPBOOK_HOME = options.library;
 
+  const settings = await SettingsStore.open(configDir(), log);
   const token = createToken();
   let boundPort = 0;
   const app = createApp({
@@ -174,6 +184,7 @@ export async function launch(
     port: () => boundPort,
     uiDir: deps.uiDir ?? uiDir(),
     log,
+    settings,
   });
 
   let bound: { server: ServerType; port: number };
@@ -187,7 +198,7 @@ export async function launch(
   const url = `http://${HOST}:${bound.port}/`;
   if (bound.port !== options.port) log(`Port ${options.port} is busy; using ${bound.port}.`);
   log(
-    `Flipbook Studio\n  URL:       ${url}\n  Workspace: ${workspace}\n  Library:   ${options.library}\n  LLM:       not configured`,
+    `Flipbook Studio\n  URL:       ${url}\n  Workspace: ${workspace}\n  Library:   ${options.library}\n  LLM:       ${llmBanner(settings)}`,
   );
   if (options.open) (deps.open ?? openBrowser)(url);
 
