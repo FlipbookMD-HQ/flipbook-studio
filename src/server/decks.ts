@@ -2,18 +2,22 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   FileConflictError,
+  LastSlideError,
   hashBytes,
   TEMPLATES,
   ValidationError,
   createDeck,
   discoverPresentation,
+  insertSlide,
   readSlide,
+  removeSlide,
+  reorderSlides,
   renderSlideDocument,
   updateSlide,
   type Presentation,
   type SlideDraft,
 } from "@flipbook-md/core";
-import type { CreateDeckRequest, DeckDetail, SlideDoc } from "../shared/api.js";
+import type { CreateDeckRequest, DeckDetail, SlideDoc, StructureResponse } from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { decodeDeckId, encodeDeckId, resolveInside } from "./paths.js";
 import { findDecks, loadError, type DeckEntry } from "./workspace.js";
@@ -90,9 +94,12 @@ async function slideDoc(
   return { doc, hash: read.hash };
 }
 
-export async function deckDetail(root: string, id: string): Promise<DeckDetail> {
-  const deck = await findDeck(root, id);
-  const presentation = await loadDeck(deck);
+/** Every slide's SlideDoc and every file hash (the manifest's too, for folder decks). */
+async function deckSlides(
+  deck: DeckEntry,
+  presentation: Presentation,
+  id: string,
+): Promise<{ slides: SlideDoc[]; hashes: Record<string, string> }> {
   const docs = await Promise.all(
     presentation.slides.map((_, index) => slideDoc(deck, presentation, id, index)),
   );
@@ -102,6 +109,13 @@ export async function deckDetail(root: string, id: string): Promise<DeckDetail> 
     hashes["presentation.yml"] = hashBytes(manifest);
   }
   for (const { doc, hash } of docs) hashes[doc.file] = hash;
+  return { slides: docs.map(({ doc }) => doc), hashes };
+}
+
+export async function deckDetail(root: string, id: string): Promise<DeckDetail> {
+  const deck = await findDeck(root, id);
+  const presentation = await loadDeck(deck);
+  const { slides, hashes } = await deckSlides(deck, presentation, id);
   return {
     id,
     path: deck.relative,
@@ -110,7 +124,7 @@ export async function deckDetail(root: string, id: string): Promise<DeckDetail> 
     theme: presentation.theme,
     group: presentation.group ?? null,
     style: presentation.style ?? null,
-    slides: docs.map(({ doc }) => doc),
+    slides,
     hashes,
     templates: [...new Set([...Object.keys(TEMPLATES), ...Object.keys(presentation.templates ?? {})])],
     types: Object.keys(presentation.blueprint?.types ?? {}),
@@ -137,6 +151,31 @@ export async function previewSlide(
   }
 }
 
+/** Maps a core write error to the API error. `where` names the file or slide in the message. */
+function writeFailure(error: unknown, where: string, conflict: string): never {
+  if (error instanceof FileConflictError) {
+    throw new StudioError(409, "FILE_CONFLICT", conflict, {
+      path: where,
+      details: { currentHash: error.currentHash },
+    });
+  }
+  if (error instanceof LastSlideError) {
+    throw new StudioError(422, "LAST_SLIDE", "A deck needs at least one slide.", { path: where });
+  }
+  if (error instanceof ValidationError) {
+    if (error.code === "SLIDE_NOT_FOUND")
+      throw new StudioError(404, "SLIDE_NOT_FOUND", error.message, { path: where });
+    throw new StudioError(422, "VALIDATION_FAILED", error.message, {
+      details: { field: error.field ?? null, fields: error.fields ?? [] },
+    });
+  }
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code && WRITE_ERRORS.has(code)) {
+    throw new StudioError(500, "WRITE_FAILED", `Could not write ${where}: ${code}.`, { path: where });
+  }
+  throw error;
+}
+
 /** PUT /api/decks/:id/slides/:slideId: hash-checked save that changes only what changed. */
 export async function saveSlide(
   root: string,
@@ -150,29 +189,77 @@ export async function saveSlide(
   try {
     saved = await updateSlide(deck.absolute, slideId, draft, baseHash);
   } catch (error) {
-    if (error instanceof FileConflictError) {
-      throw new StudioError(409, "FILE_CONFLICT", "The slide changed on disk since you opened it.", {
-        path: slideId,
-        details: { currentHash: error.currentHash },
-      });
-    }
-    if (error instanceof ValidationError) {
-      if (error.code === "SLIDE_NOT_FOUND")
-        throw new StudioError(404, "SLIDE_NOT_FOUND", error.message, { path: slideId });
-      throw new StudioError(422, "VALIDATION_FAILED", error.message, {
-        details: { field: error.field ?? null, fields: error.fields ?? [] },
-      });
-    }
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code && WRITE_ERRORS.has(code)) {
-      throw new StudioError(500, "WRITE_FAILED", `Could not write ${slideId}: ${code}.`, { path: slideId });
-    }
-    throw error;
+    writeFailure(error, slideId, "The slide changed on disk since you opened it.");
   }
   const presentation = await loadDeck(deck);
   const index = slideIndex(deck, presentation, saved.slideId);
   const { doc } = await slideDoc(deck, presentation, id, index);
   return { slide: doc, hashes: saved.hashes, violations: [] };
+}
+
+const STRUCTURE_CONFLICT = "The deck changed on disk since you opened it.";
+
+/** The file a structure change writes: the manifest, or the single file. */
+const structureFile = (deck: DeckEntry) =>
+  deck.kind === "folder" ? "presentation.yml" : path.basename(deck.absolute);
+
+async function structureResult(deck: DeckEntry, id: string) {
+  const presentation = await loadDeck(deck);
+  return { presentation, ...(await deckSlides(deck, presentation, id)), violations: [] as [] };
+}
+
+/** POST /api/decks/:id/slides: adds a slide after `afterSlideId` (null: first). */
+export async function addSlide(
+  root: string,
+  id: string,
+  afterSlideId: string | null,
+  baseHash: string,
+  draft: SlideDraft,
+): Promise<StructureResponse & { slide: SlideDoc }> {
+  const deck = await findDeck(root, id);
+  let added: { slideId: string };
+  try {
+    added = await insertSlide(deck.absolute, afterSlideId, draft, baseHash);
+  } catch (error) {
+    writeFailure(error, structureFile(deck), STRUCTURE_CONFLICT);
+  }
+  const { presentation, slides, hashes, violations } = await structureResult(deck, id);
+  const slide = slides[slideIndex(deck, presentation, added.slideId)]!;
+  return { slide, slides, hashes, violations };
+}
+
+/** DELETE /api/decks/:id/slides/:slideId?baseHash=… */
+export async function deleteSlide(
+  root: string,
+  id: string,
+  slideId: string,
+  baseHash: string,
+): Promise<StructureResponse> {
+  const deck = await findDeck(root, id);
+  try {
+    await removeSlide(deck.absolute, slideId, baseHash);
+  } catch (error) {
+    writeFailure(error, structureFile(deck), STRUCTURE_CONFLICT);
+  }
+  const { slides, hashes, violations } = await structureResult(deck, id);
+  return { slides, hashes, violations };
+}
+
+/** PUT /api/decks/:id/order: `slideIds` is a permutation of the deck's slides. */
+export async function orderSlides(
+  root: string,
+  id: string,
+  slideIds: string[],
+  baseHash: string,
+): Promise<StructureResponse> {
+  const deck = await findDeck(root, id);
+  try {
+    await reorderSlides(deck.absolute, slideIds, baseHash);
+  } catch (error) {
+    writeFailure(error, structureFile(deck), STRUCTURE_CONFLICT);
+  }
+  const { slides, hashes, violations } = await structureResult(deck, id);
+  return { slides, hashes, violations };
 }
 
 /** Resolves a `files/*` request inside the deck folder (or the folder holding a single-file deck). */
