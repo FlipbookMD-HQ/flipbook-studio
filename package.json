@@ -1,0 +1,61 @@
+{
+  "name": "@flipbook-md/studio",
+  "version": "0.1.0",
+  "description": "Self-hosted editor for Flipbook MD decks, themes, templates, blueprints and media kits.",
+  "license": "MIT",
+  "author": "Celo (https://github.com/uminocelo)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uminocelo/flipbook-studio.git"
+  },
+  "type": "module",
+  "bin": {
+    "flipbook-studio": "./bin/flipbook-studio.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "vite build && tsup",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@flipbook-md/core": "~0.1.0",
+    "@hono/node-server": "^1.19.19",
+    "hono": "^4.13.18",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.64.1",
+    "@tanstack/react-query": "^5.107.1",
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^5.2.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "prettier": "^3.10.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.6",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^7.3.8",
+    "vitest": "^3.2.7"
+  }
+}
