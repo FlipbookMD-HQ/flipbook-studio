@@ -1,0 +1,334 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { ApiRequestError, getDeck, previewSlide, saveSlide } from "../api";
+import type { ApiError, DeckDetail, SlideDraft } from "../../shared/api";
+import { ConflictDialog, type DiskVersion } from "./ConflictDialog";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { ErrorNotice, Shell } from "./Shell";
+
+const PREVIEW_DELAY_MS = 250;
+
+function same(a: SlideDraft, b: SlideDraft): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function asApiError(error: unknown): ApiError {
+  return error instanceof ApiRequestError
+    ? error.error
+    : { code: "INTERNAL", message: String((error as Error)?.message ?? error) };
+}
+
+export function SlideEditor() {
+  const { id = "", slideId: rawSlideId = "" } = useParams();
+  const slideId = rawSlideId;
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const deck = useQuery({ queryKey: ["deck", id], queryFn: () => getDeck(id) });
+
+  const slide = deck.data?.slides.find((item) => item.id === slideId) ?? null;
+  const [base, setBase] = useState<{ draft: SlideDraft; hash: string } | null>(null);
+  const [draft, setDraft] = useState<SlideDraft | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<ApiError | null>(null);
+  const [saveError, setSaveError] = useState<ApiError | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [conflict, setConflict] = useState<{ disk: DiskVersion | null } | null>(null);
+  const loadedFor = useRef<string | null>(null);
+
+  // Load the slide's saved draft when the slide (or the deck) first arrives.
+  useEffect(() => {
+    if (!deck.data || !slide || loadedFor.current === `${id}:${slideId}`) return;
+    loadedFor.current = `${id}:${slideId}`;
+    const saved = { draft: slide.draft, hash: deck.data.hashes[slide.file]! };
+    setBase(saved);
+    setDraft(saved.draft);
+    setPreview(slide.html);
+    setPreviewError(null);
+  }, [deck.data, slide, id, slideId]);
+
+  const dirty = Boolean(base && draft && !same(base.draft, draft));
+
+  // Debounced preview: the latest request always wins; older responses are dropped.
+  const latest = useRef(0);
+  useEffect(() => {
+    if (!draft || !base || same(base.draft, draft)) return;
+    const ticket = ++latest.current;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await previewSlide(id, slideId, draft, controller.signal);
+        if (ticket !== latest.current) return;
+        setPreview(result.html);
+        setPreviewError(null);
+      } catch (error) {
+        if (ticket !== latest.current || controller.signal.aborted) return;
+        setPreviewError(asApiError(error));
+      }
+    }, PREVIEW_DELAY_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [draft, base, id, slideId]);
+
+  const applySaved = useCallback(
+    (result: Awaited<ReturnType<typeof saveSlide>>) => {
+      queryClient.setQueryData<DeckDetail>(["deck", id], (current) =>
+        current
+          ? {
+              ...current,
+              hashes: { ...current.hashes, ...result.hashes },
+              slides: current.slides.map((item) => (item.id === slideId ? result.slide : item)),
+            }
+          : current,
+      );
+      const saved = { draft: result.slide.draft, hash: result.hashes[result.slide.file]! };
+      setBase(saved);
+      setDraft(saved.draft);
+      setPreview(result.slide.html);
+      if (result.slide.id !== slideId) {
+        loadedFor.current = `${id}:${result.slide.id}`;
+        navigate(`/decks/${id}/slides/${encodeURIComponent(result.slide.id)}`, { replace: true });
+      }
+    },
+    [queryClient, id, slideId, navigate],
+  );
+
+  const save = useCallback(
+    async (hash?: string) => {
+      if (!draft || !base || saving) return;
+      setSaving(true);
+      setSaveError(null);
+      try {
+        applySaved(await saveSlide(id, slideId, hash ?? base.hash, draft));
+        setConflict(null);
+      } catch (error) {
+        const apiError = asApiError(error);
+        if (apiError.code === "FILE_CONFLICT") {
+          const fresh = await getDeck(id).catch(() => null);
+          const onDisk = fresh?.slides.find((item) => item.id === slideId);
+          setConflict({
+            disk: onDisk && fresh ? { draft: onDisk.draft, hash: fresh.hashes[onDisk.file]! } : null,
+          });
+        } else {
+          setSaveError(apiError);
+        }
+      } finally {
+        setSaving(false);
+      }
+    },
+    [draft, base, saving, id, slideId, applySaved],
+  );
+
+  // Cmd/Ctrl+S saves.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void save();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [save]);
+
+  // Unsaved changes: ask before leaving inside Studio, and let the browser warn on tab close.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  if (deck.isPending) return <Shell>Loading slide…</Shell>;
+  if (deck.isError) {
+    return (
+      <Shell>
+        <ErrorNotice error={asApiError(deck.error)} />
+      </Shell>
+    );
+  }
+  if (!slide) {
+    return (
+      <Shell>
+        <ErrorNotice
+          error={{ code: "SLIDE_NOT_FOUND", message: "This slide is no longer in the deck.", path: slideId }}
+        />
+      </Shell>
+    );
+  }
+  if (!draft) return <Shell>Loading slide…</Shell>;
+
+  const data = deck.data;
+  const update = (patch: Partial<SlideDraft>) =>
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+  const templateError = previewError?.details?.field === "template" ? previewError.message : null;
+
+  return (
+    <Shell
+      crumb={
+        <>
+          <Link to={`/decks/${id}`}>{data.title}</Link> · slide {slide.index + 1}
+        </>
+      }
+    >
+      <div className="editor">
+        <nav className="slide-list" aria-label="Slides">
+          <ol>
+            {data.slides.map((item) => (
+              <li key={item.id}>
+                <Link
+                  to={`/decks/${id}/slides/${encodeURIComponent(item.id)}`}
+                  aria-current={item.id === slideId ? "page" : undefined}
+                  onClick={() => (loadedFor.current = null)}
+                >
+                  {item.index + 1}. {item.title || "Untitled"}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
+        <section className="editor-main" aria-label="Slide">
+          <div className="editor-bar">
+            <span className={dirty ? "status dirty" : "status"} data-testid="save-status">
+              {saving ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}
+            </span>
+            <button type="button" className="primary" disabled={!dirty || saving} onClick={() => void save()}>
+              Save
+            </button>
+          </div>
+          {saveError ? <ErrorNotice error={saveError} /> : null}
+
+          <div className="form-grid">
+            <label className="field">
+              <span>Template</span>
+              <select
+                value={draft.template ?? ""}
+                aria-invalid={Boolean(templateError)}
+                onChange={(event) => update({ template: event.target.value || null })}
+              >
+                <option value="">Default</option>
+                {data.templates.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              {templateError ? <small className="field-error">{templateError}</small> : null}
+            </label>
+            <label className="field">
+              <span>Type</span>
+              <input
+                value={draft.type ?? ""}
+                list="slide-types"
+                onChange={(event) => update({ type: event.target.value.trim() || null })}
+              />
+              <datalist id="slide-types">
+                {data.types.map((type) => (
+                  <option key={type} value={type} />
+                ))}
+              </datalist>
+            </label>
+            <label className="field">
+              <span>Title</span>
+              <input
+                value={draft.title ?? ""}
+                placeholder="From the first # heading"
+                title={
+                  data.kind === "single"
+                    ? "Single-file slides take their title from the first # heading."
+                    : undefined
+                }
+                disabled={data.kind === "single"}
+                onChange={(event) => update({ title: event.target.value === "" ? null : event.target.value })}
+              />
+            </label>
+          </div>
+
+          <div className="field">
+            <span>Markdown</span>
+            <MarkdownEditor value={draft.markdown} onChange={(markdown) => update({ markdown })} />
+          </div>
+
+          <label className="field">
+            <span>Speaker notes</span>
+            <textarea
+              rows={4}
+              value={draft.notes}
+              onChange={(event) => update({ notes: event.target.value })}
+            />
+          </label>
+
+          {Object.keys(draft.directives).length ? (
+            <div className="field">
+              <span>Other directives (kept as they are)</span>
+              <dl className="directives">
+                {Object.entries(draft.directives).map(([key, value]) => (
+                  <div key={key}>
+                    <dt>{key}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="preview" aria-label="Preview">
+          <div className="preview-frame">
+            {/* Rendered slide HTML only ever appears here: no allow-scripts, no allow-same-origin. */}
+            <iframe title="Slide preview" sandbox="" srcDoc={preview ?? ""} data-testid="preview" />
+          </div>
+          {previewError && !templateError ? <ErrorNotice error={previewError} /> : null}
+        </section>
+      </div>
+
+      {conflict ? (
+        <ConflictDialog
+          disk={conflict.disk}
+          mine={draft}
+          onCancel={() => setConflict(null)}
+          onOverwrite={(hash) => void save(hash)}
+          onReload={(disk) => {
+            setBase(disk);
+            setDraft(disk.draft);
+            setConflict(null);
+            void queryClient.invalidateQueries({ queryKey: ["deck", id] });
+            loadedFor.current = `${id}:${slideId}`;
+            void previewSlide(id, slideId, null).then((result) => setPreview(result.html));
+          }}
+        />
+      ) : null}
+
+      {blocker.state === "blocked" ? (
+        <LeaveDialog onStay={() => blocker.reset()} onLeave={() => blocker.proceed()} />
+      ) : null}
+    </Shell>
+  );
+}
+
+function LeaveDialog({ onStay, onLeave }: { onStay: () => void; onLeave: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, []);
+  return (
+    <dialog ref={dialog} className="dialog" aria-labelledby="leave-title" onCancel={onStay}>
+      <h2 id="leave-title">Leave without saving?</h2>
+      <p>This slide has unsaved changes.</p>
+      <div className="actions">
+        <button type="button" onClick={onStay}>
+          Stay
+        </button>
+        <button type="button" className="primary" onClick={onLeave}>
+          Leave and discard
+        </button>
+      </div>
+    </dialog>
+  );
+}
