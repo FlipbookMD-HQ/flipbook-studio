@@ -13,6 +13,9 @@ import {
   CreateKitRequestSchema,
   KitPreviewRequestSchema,
   CopyGroupRequestSchema,
+  LlmModelsRequestSchema,
+  LlmTestRequestSchema,
+  SettingsPatchSchema,
   RenameGroupRequestSchema,
   KitQuerySchema,
   UpdateKitRequestSchema,
@@ -28,6 +31,8 @@ import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
 import { coreExports, exportsInfo, startExport, type ExportServices } from "./exports.js";
 import { JobRegistry } from "./jobs.js";
+import { SettingsStore, configDir, maskSettings } from "./settings.js";
+import { defaultProviderFactory, listModels, testConnection, type ProviderFactory } from "./llm/routes.js";
 import { copyGroup, createKit, getKit, parseKind, previewKit, renameGroup, updateKit } from "./kits.js";
 import { PlayerRegistry } from "./present.js";
 import {
@@ -71,6 +76,10 @@ export interface AppOptions {
   log?: (line: string) => void;
   /** Test seams for export (core's dependency check and exporters by default). */
   exportServices?: ExportServices;
+  /** Settings (default: settings.json in the OS config folder). */
+  settings?: SettingsStore;
+  /** Test seam: how an LLM connection is made (default: OpenAI-compatible HTTP). */
+  llmProvider?: ProviderFactory;
 }
 
 export type Env = { Variables: { requestId: string } };
@@ -111,6 +120,10 @@ export function createApp(options: AppOptions) {
   const players = new PlayerRegistry();
   const jobs = new JobRegistry();
   const services = options.exportServices ?? coreExports;
+  const settingsStore = options.settings
+    ? Promise.resolve(options.settings)
+    : SettingsStore.open(configDir(), log);
+  const llmProvider = options.llmProvider ?? defaultProviderFactory;
 
   app.use("*", async (c, next) => {
     const requestId = crypto.randomBytes(4).toString("hex");
@@ -212,6 +225,32 @@ export function createApp(options: AppOptions) {
     });
     return c.json(await getKit(options.workspace, kind, c.req.param("name"), scope, deckId));
   });
+  // US-11: settings and the local LLM.
+  api.get("/settings", async (c) => c.json(maskSettings((await settingsStore).current())));
+  api.put("/settings", async (c) => {
+    const patch = SettingsPatchSchema.parse(await jsonBody(c));
+    return c.json(maskSettings(await (await settingsStore).update(patch)));
+  });
+  api.post("/llm/models", async (c) =>
+    c.json(
+      await listModels(
+        LlmModelsRequestSchema.parse(await jsonBody(c)),
+        await settingsStore,
+        llmProvider,
+        c.req.raw.signal,
+      ),
+    ),
+  );
+  api.post("/llm/test", async (c) =>
+    c.json(
+      await testConnection(
+        LlmTestRequestSchema.parse(await jsonBody(c)),
+        await settingsStore,
+        llmProvider,
+        c.req.raw.signal,
+      ),
+    ),
+  );
   // US-10: copy and rename media kits.
   api.post("/kits/group/:name/copy", async (c) =>
     c.json(

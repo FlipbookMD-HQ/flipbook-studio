@@ -35,3 +35,13 @@ npm run lint && npm run typecheck
 ```
 
 Studio depends on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core). To develop both together, clone `flipbook-md-core` next to this repository and run `npm link ../flipbook-md-core`.
+
+## Local model (AI features)
+
+Open **Settings** in Studio, pick Ollama, LM Studio or a custom OpenAI-compatible base URL, choose a model and click **Test**. Settings are stored outside your decks, in `settings.json` in your config folder (`~/Library/Application Support/flipbook-studio` on macOS, `$XDG_CONFIG_HOME/flipbook-studio` or `~/.config/flipbook-studio` on Linux). The file is readable only by you, because it can hold an API key. Set `FLIPBOOK_STUDIO_CONFIG_DIR` to use another folder.
+
+### Review checklist for AI features
+
+- Every AI button is rendered through `<AiAction>` (`src/ui/ai.tsx`), so it is disabled, with a link to Settings, until a model is set up.
+- Tests use `FakeProvider` or the HTTP stub in `test/support/` (never a real model). Tests tagged for a real model live in `test/real-llm/` and run in the nightly workflow only.
+- An API key never appears in a response, a log line or an error message.

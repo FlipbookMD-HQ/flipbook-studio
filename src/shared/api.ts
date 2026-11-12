@@ -25,6 +25,14 @@ export const ERROR_CODES = [
   "JOB_RUNNING",
   "JOB_NOT_FOUND",
   "EXPORT_FAILED",
+  "SETTINGS_UNSUPPORTED",
+  "LLM_NOT_CONFIGURED",
+  "LLM_UNREACHABLE",
+  "LLM_UNAUTHORIZED",
+  "LLM_MODEL_NOT_FOUND",
+  "LLM_TIMEOUT",
+  "LLM_BAD_OUTPUT",
+  "CANCELLED",
   "INTERNAL",
 ] as const;
 
@@ -315,3 +323,52 @@ export type ExportsInfo = z.infer<typeof ExportsInfoSchema>;
 export const TOKEN_HEADER = "x-flipbook-token";
 export const TOKEN_META = "flipbook-token";
 export const TOKEN_PLACEHOLDER = "__FLIPBOOK_TOKEN__";
+
+// US-11: settings and the local LLM.
+export const API_KEY_MASK = "••••";
+const httpUrl = z
+  .string()
+  .trim()
+  .url("Enter a full URL, such as http://127.0.0.1:11434/v1.")
+  .refine((value) => /^https?:\/\//i.test(value), "Use an http:// or https:// URL.");
+export const LlmSettingsSchema = z.object({
+  baseUrl: httpUrl,
+  model: z.string().min(1).nullable(),
+  /** Masked as "••••" in responses. */
+  apiKey: z.string().nullable(),
+  temperature: z.number().min(0).max(2),
+  timeoutMs: z.number().int().min(5_000).max(600_000),
+  maxRepairRounds: z.number().int().min(0).max(3),
+});
+export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
+export const SettingsSchema = z.object({
+  version: z.literal(1),
+  llm: LlmSettingsSchema.nullable(),
+  lastWorkspace: z.string().nullable(),
+});
+export type Settings = z.infer<typeof SettingsSchema>;
+/** PUT /api/settings: a partial merge. `llm: null` removes the LLM; `apiKey: null` clears the key, leaving it out keeps it. */
+export const SettingsPatchSchema = z
+  .object({
+    llm: LlmSettingsSchema.partial().strict().nullable().optional(),
+    lastWorkspace: z.string().nullable().optional(),
+  })
+  .strict();
+export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
+
+export const LlmModelsRequestSchema = z.object({
+  baseUrl: httpUrl,
+  /** Left out: the saved key is used. null: no key. */
+  apiKey: z.string().nullable().optional(),
+});
+export type LlmModelsRequest = z.infer<typeof LlmModelsRequestSchema>;
+export const LlmModelsResponseSchema = z.object({
+  models: z.array(z.object({ id: z.string(), contextLength: z.number().optional() })),
+});
+export const LlmTestRequestSchema = LlmModelsRequestSchema.extend({
+  model: z.string().min(1),
+  timeoutMs: z.number().int().min(5_000).max(600_000).optional(),
+});
+export type LlmTestRequest = z.infer<typeof LlmTestRequestSchema>;
+export const LlmTestResponseSchema = z.object({ reply: z.string(), latencyMs: z.number() });
+export type LlmTestResponse = z.infer<typeof LlmTestResponseSchema>;

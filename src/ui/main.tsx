@@ -13,6 +13,7 @@ import { BlueprintsScreen } from "./screens/BlueprintsScreen";
 import { BlueprintScreen } from "./screens/BlueprintScreen";
 import { MediaKitsScreen } from "./screens/MediaKitsScreen";
 import { MediaKitScreen } from "./screens/MediaKitScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
   { path: "/kits/blueprints/library/:name", element: <BlueprintScreen /> },
   { path: "/kits/blueprints/deck/:deckId", element: <BlueprintScreen /> },
   { path: "/kits/media", element: <MediaKitsScreen /> },
+  { path: "/settings", element: <SettingsScreen /> },
   { path: "/kits/media/new", element: <MediaKitScreen /> },
   { path: "/kits/media/library/:name", element: <MediaKitScreen /> },
   { path: "/kits/media/builtin/:name", element: <MediaKitScreen /> },

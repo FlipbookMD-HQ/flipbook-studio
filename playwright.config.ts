@@ -4,7 +4,8 @@ const studio = (workspace: string, port: number) => ({
   command: `node bin/flipbook-studio.js ${workspace} --no-open --port ${port}`,
   url: `http://127.0.0.1:${port}/`,
   reuseExistingServer: false,
-  env: { FLIPBOOK_HOME: "fixtures/library" },
+  // Each server has its own settings folder, never the real one.
+  env: { FLIPBOOK_HOME: "fixtures/library", FLIPBOOK_STUDIO_CONFIG_DIR: `.e2e-config/${port}` },
 });
 
 const fresh = (workspace: string, port: number, source = "") => {
@@ -25,7 +26,11 @@ export default defineConfig({
     {
       ...fresh(".e2e-export", 4395, "fixtures/edit"),
       command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-export fixtures/edit && "${process.execPath}" bin/flipbook-studio.js .e2e-export --no-open --port 4395`,
-      env: { FLIPBOOK_HOME: "fixtures/library", PATH: "/usr/bin:/bin" },
+      env: {
+        FLIPBOOK_HOME: "fixtures/library",
+        FLIPBOOK_STUDIO_CONFIG_DIR: ".e2e-config/4395",
+        PATH: "/usr/bin:/bin",
+      },
     },
     // Theme editor: a fresh workspace and a fresh, empty library.
     {

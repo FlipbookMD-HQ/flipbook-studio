@@ -1,0 +1,47 @@
+name: Real LLM
+
+# Nightly and on demand: the @real-llm tests against a real Ollama (D14).
+# The job only warns: it never runs on pull requests and never blocks a merge.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ollama:
+    name: "@real-llm tests against Ollama (qwen2.5:0.5b)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    env:
+      REAL_LLM_URL: http://127.0.0.1:11434/v1
+      REAL_LLM_MODEL: qwen2.5:0.5b
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Ollama and pull the model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:11434/api/version && break; sleep 2; done
+          ollama pull "$REAL_LLM_MODEL"
+
+      - name: Run the @real-llm tests
+        run: npx vitest run --config vitest.real-llm.config.ts
+
+      - name: Warn on failure
+        if: failure()
+        run: echo "::warning title=Real LLM::The @real-llm tests failed against Ollama. This doesn't block merges; check ollama.log and the test output."

@@ -964,3 +964,36 @@ a.button.primary {
   font-weight: 600;
   margin-bottom: 0.4rem;
 }
+
+/* US-11: settings and AI actions */
+.settings {
+  max-width: 720px;
+  display: grid;
+  gap: 1rem;
+}
+.settings .field input,
+.settings .field select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+}
+.settings details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.settings .ok,
+.ok {
+  color: #7ad7a1;
+}
+.ai-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ai-setup {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
