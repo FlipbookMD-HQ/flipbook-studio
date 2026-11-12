@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
+import { ViolationBadge, ViolationsPanel, violationsFor } from "./Violations";
 import { ApiRequestError, getDeck } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 
@@ -20,10 +21,16 @@ export function DeckScreen() {
     );
   }
 
-  const { title, path, slides } = deck.data;
+  const { title, path, slides, violations, hasBlueprint } = deck.data;
   return (
     <Shell crumb={path}>
       <h1>{title}</h1>
+      <ViolationsPanel
+        deckId={deck.data.id}
+        slides={slides}
+        violations={violations}
+        hasBlueprint={hasBlueprint}
+      />
       <ol className="slide-grid">
         {slides.map((slide) => (
           <li key={slide.id} className="slide-thumb" data-testid="slide-thumb">
@@ -38,7 +45,8 @@ export function DeckScreen() {
                 />
               </div>
               <p className="meta">
-                {slide.index + 1}. {slide.title || "Untitled"}
+                {slide.index + 1}. {slide.title || "Untitled"}{" "}
+                {hasBlueprint ? <ViolationBadge count={violationsFor(violations, slide).length} /> : null}
               </p>
             </Link>
           </li>

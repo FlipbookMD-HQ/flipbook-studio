@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { ApiRequestError, getDeck, previewSlide, saveSlide } from "../api";
-import type { ApiError, DeckDetail, SlideDraft } from "../../shared/api";
+import type { ApiError, DeckDetail, SlideDraft, Violation } from "../../shared/api";
 import { ConflictDialog, type DiskVersion } from "./ConflictDialog";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { SlideList } from "./SlideList";
+import { SlideViolations, ViolationsPanel, violationsFor } from "./Violations";
 import { ErrorNotice, Shell } from "./Shell";
 
 const PREVIEW_DELAY_MS = 250;
@@ -31,6 +32,8 @@ export function SlideEditor() {
   const [base, setBase] = useState<{ draft: SlideDraft; hash: string } | null>(null);
   const [draft, setDraft] = useState<SlideDraft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // Violations from the last draft preview (the whole deck with the draft applied).
+  const [liveViolations, setLiveViolations] = useState<Violation[] | null>(null);
   const [previewError, setPreviewError] = useState<ApiError | null>(null);
   const [saveError, setSaveError] = useState<ApiError | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,6 +49,7 @@ export function SlideEditor() {
     setDraft(saved.draft);
     setPreview(slide.html);
     setPreviewError(null);
+    setLiveViolations(null);
   }, [deck.data, slide, id, slideId]);
 
   const dirty = Boolean(base && draft && !same(base.draft, draft));
@@ -61,6 +65,7 @@ export function SlideEditor() {
         const result = await previewSlide(id, slideId, draft, controller.signal);
         if (ticket !== latest.current) return;
         setPreview(result.html);
+        setLiveViolations(result.violations);
         setPreviewError(null);
       } catch (error) {
         if (ticket !== latest.current || controller.signal.aborted) return;
@@ -80,6 +85,7 @@ export function SlideEditor() {
           ? {
               ...current,
               hashes: { ...current.hashes, ...result.hashes },
+              violations: result.violations,
               slides: current.slides.map((item) => (item.id === slideId ? result.slide : item)),
             }
           : current,
@@ -88,6 +94,7 @@ export function SlideEditor() {
       setBase(saved);
       setDraft(saved.draft);
       setPreview(result.slide.html);
+      setLiveViolations(null);
       if (result.slide.id !== slideId) {
         loadedFor.current = `${id}:${result.slide.id}`;
         navigate(`/decks/${id}/slides/${encodeURIComponent(result.slide.id)}`, { replace: true });
@@ -165,6 +172,8 @@ export function SlideEditor() {
   if (!draft) return <Shell>Loading slide…</Shell>;
 
   const data = deck.data;
+  // While the draft differs from disk, the last preview's check is the live one.
+  const violations = dirty && liveViolations ? liveViolations : data.violations;
   const update = (patch: Partial<SlideDraft>) =>
     setDraft((current) => (current ? { ...current, ...patch } : current));
   const templateError = previewError?.details?.field === "template" ? previewError.message : null;
@@ -177,9 +186,17 @@ export function SlideEditor() {
         </>
       }
     >
+      <ViolationsPanel
+        deckId={id}
+        slides={data.slides}
+        violations={violations}
+        hasBlueprint={data.hasBlueprint}
+        currentSlideId={slideId}
+      />
       <div className="editor">
         <SlideList
           deck={data}
+          violations={violations}
           currentId={slideId}
           locked={dirty || saving}
           onOpen={() => (loadedFor.current = null)}
@@ -201,6 +218,7 @@ export function SlideEditor() {
             </button>
           </div>
           {saveError ? <ErrorNotice error={saveError} /> : null}
+          {data.hasBlueprint ? <SlideViolations violations={violationsFor(violations, slide)} /> : null}
 
           <div className="form-grid">
             <label className="field">

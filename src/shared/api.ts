@@ -66,6 +66,7 @@ export type Workspace = z.infer<typeof WorkspaceSchema>;
 
 // A blueprint violation (core's Violation). `source` is a slide source or "deck"; `message` is the CLI string.
 export const ViolationSchema = z.object({ source: z.string(), code: z.string(), message: z.string() });
+export type Violation = z.infer<typeof ViolationSchema>;
 
 // A slide as the editor holds it (data-model: SlideDraft). Mirrors core's SlideDraft.
 export const SlideDraftSchema = z.object({
