@@ -13,3 +13,4 @@ playwright-report/
 .e2e-bp-library/
 .e2e-media/
 .e2e-media-library/
+.e2e-config/
