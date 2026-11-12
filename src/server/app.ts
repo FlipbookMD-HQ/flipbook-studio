@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { streamSSE } from "hono/streaming";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { ZodError } from "zod";
@@ -8,6 +9,9 @@ import { assetMime } from "@flipbook-md/core";
 import {
   AddSlideRequestSchema,
   CreateDeckRequestSchema,
+  ExportRequestSchema,
+  PresentRequestSchema,
+  type JobEvent,
   DeleteSlideQuerySchema,
   OrderRequestSchema,
   PreviewRequestSchema,
@@ -16,12 +20,16 @@ import {
 } from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
+import { coreExports, exportsInfo, startExport, type ExportServices } from "./exports.js";
+import { JobRegistry } from "./jobs.js";
+import { PlayerRegistry } from "./present.js";
 import {
   addSlide,
   createWorkspaceDeck,
   deckDetail,
   deckFile,
   deleteSlide,
+  findDeck,
   orderSlides,
   previewSlide,
   saveSlide,
@@ -54,6 +62,8 @@ export interface AppOptions {
   port: () => number;
   uiDir: string;
   log?: (line: string) => void;
+  /** Test seams for export (core's dependency check and exporters by default). */
+  exportServices?: ExportServices;
 }
 
 export type Env = { Variables: { requestId: string } };
@@ -91,6 +101,9 @@ async function jsonBody(c: Context<Env>): Promise<unknown> {
 export function createApp(options: AppOptions) {
   const log = options.log ?? ((line: string) => console.log(line));
   const app = new Hono<Env>();
+  const players = new PlayerRegistry();
+  const jobs = new JobRegistry();
+  const services = options.exportServices ?? coreExports;
 
   app.use("*", async (c, next) => {
     const requestId = crypto.randomBytes(4).toString("hex");
@@ -177,6 +190,58 @@ export function createApp(options: AppOptions) {
     );
     return c.json(await deckDetail(options.workspace, created.id), 201);
   });
+  // US-6: present and export.
+  api.post("/decks/:id/present", async (c) => {
+    const { slideIndex = 0 } = PresentRequestSchema.parse(await jsonBody(c));
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    return c.json(await players.open(c.req.param("id"), deck, slideIndex));
+  });
+  api.get("/decks/:id/exports", async (c) =>
+    c.json(await exportsInfo(options.workspace, c.req.param("id"), jobs)),
+  );
+  api.post("/decks/:id/exports", async (c) => {
+    const request = ExportRequestSchema.parse(await jsonBody(c));
+    const job = await startExport(options.workspace, c.req.param("id"), request, jobs, services);
+    return c.json({ jobId: job.id }, 202);
+  });
+  api.get("/jobs/:jobId/events", (c) => {
+    const id = c.req.param("jobId");
+    if (!jobs.get(id)) throw new StudioError(404, "JOB_NOT_FOUND", "No export with that ID.");
+    // Replays the current state, then streams until the job ends. Closing the stream never stops the job.
+    return streamSSE(c, async (stream) => {
+      const queue: JobEvent[] = [];
+      let wake: (() => void) | null = null;
+      const unsubscribe = jobs.subscribe(id, (event) => {
+        queue.push(event);
+        wake?.();
+      });
+      stream.onAbort(() => {
+        unsubscribe();
+        wake?.();
+      });
+      queue.unshift(...jobs.replay(id));
+      try {
+        for (;;) {
+          while (queue.length) {
+            const event = queue.shift()!;
+            await stream.writeSSE({ event: event.type, data: JSON.stringify(event) });
+            if (event.type !== "progress") return;
+          }
+          if (stream.aborted) return;
+          await new Promise<void>((resolve) => (wake = resolve));
+          wake = null;
+        }
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+  api.delete("/jobs/:jobId", (c) => {
+    const job = jobs.cancel(c.req.param("jobId"));
+    if (!job) throw new StudioError(404, "JOB_NOT_FOUND", "No export with that ID.");
+    return c.json({ job });
+  });
+  // Last: anything else under /api.
   api.all("*", () => {
     throw new StudioError(404, "NOT_FOUND", "No such API route.");
   });
@@ -207,5 +272,10 @@ export function createApp(options: AppOptions) {
 
   app.onError(errorHandler(log));
 
-  return app;
+  /** Stops player servers and cancels running exports (Studio is shutting down). */
+  const shutdown = async () => {
+    jobs.cancelAll();
+    await players.closeAll();
+  };
+  return Object.assign(app, { shutdown, players, jobs });
 }

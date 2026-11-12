@@ -44,3 +44,27 @@ export function decodeDeckId(id: string): string {
     throw new StudioError(404, "DECK_NOT_FOUND", "No deck with that ID.");
   return relative;
 }
+
+/**
+ * Resolves a folder Studio will create (an export output) inside `root`. Unlike `resolveInside`,
+ * the deepest existing ancestor is resolved too, so a symlinked parent can't point outside.
+ */
+export async function resolveOutputDir(root: string, relative: string): Promise<string> {
+  const lexical = await resolveInside(root, relative);
+  const realRoot = await fs.realpath(root);
+  let existing = lexical;
+  const rest: string[] = [];
+  for (;;) {
+    try {
+      existing = await fs.realpath(existing);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      rest.unshift(path.basename(existing));
+      existing = path.dirname(existing);
+    }
+  }
+  const target = path.join(existing, ...rest);
+  if (outside(realRoot, target) || target === realRoot) refuse(relative);
+  return target;
+}

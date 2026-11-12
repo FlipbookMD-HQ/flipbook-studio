@@ -2,6 +2,12 @@ import {
   type CreateDeckRequest,
   DeckDetailSchema,
   AddSlideResponseSchema,
+  ExportJobSchema,
+  ExportsInfoSchema,
+  JobEventSchema,
+  PresentResponseSchema,
+  type ExportRequest,
+  type JobEvent,
   PreviewResponseSchema,
   StructureResponseSchema,
   SaveSlideResponseSchema,
@@ -12,7 +18,7 @@ import {
   WorkspaceSchema,
   type ApiError,
 } from "../shared/api";
-import type { z } from "zod";
+import { z } from "zod";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -91,3 +97,57 @@ export const reorderSlides = (deckId: string, slideIds: string[], baseHash: stri
     method: "PUT",
     body: JSON.stringify({ baseHash, slideIds }),
   });
+
+export const presentDeck = (deckId: string, slideIndex: number) =>
+  apiFetch(`${deckUrl(deckId)}/present`, PresentResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ slideIndex }),
+  });
+
+export const getExports = (deckId: string) => apiFetch(`${deckUrl(deckId)}/exports`, ExportsInfoSchema);
+
+export const startExport = (deckId: string, request: ExportRequest) =>
+  apiFetch(`${deckUrl(deckId)}/exports`, z.object({ jobId: z.string() }), {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+
+export const cancelJob = (jobId: string) =>
+  apiFetch(`/api/jobs/${encodeURIComponent(jobId)}`, z.object({ job: ExportJobSchema }), {
+    method: "DELETE",
+  });
+
+/**
+ * Follows a job's server-sent events until it ends or `signal` aborts. EventSource can't send
+ * the Studio token header, so this reads the stream through fetch.
+ */
+export async function followJob(
+  jobId: string,
+  onEvent: (event: JobEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/events`, {
+    headers: { [TOKEN_HEADER]: token() },
+    signal,
+  });
+  if (!response.ok || !response.body)
+    throw new ApiRequestError(response.status, { code: "JOB_NOT_FOUND", message: "The export is gone." });
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value;
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) !== -1) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = block
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (data) onEvent(JobEventSchema.parse(JSON.parse(data)));
+    }
+  }
+}
