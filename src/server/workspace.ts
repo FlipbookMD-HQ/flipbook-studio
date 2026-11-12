@@ -100,12 +100,15 @@ function unique(refs: KitRef[]): KitRef[] {
   });
 }
 
-async function isGroup(file: string): Promise<boolean> {
+/** A group (media kit) file has `templates` and `blueprint` keys. Returns its description, or null if it isn't a group. */
+async function groupDescription(file: string): Promise<string | null> {
   try {
     const parsed = parseYaml(await fs.readFile(file, "utf8"));
-    return Boolean(parsed && typeof parsed === "object" && "templates" in parsed && "blueprint" in parsed);
+    if (!parsed || typeof parsed !== "object" || !("templates" in parsed) || !("blueprint" in parsed))
+      return null;
+    return typeof parsed.description === "string" ? parsed.description.trim() : "";
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -135,8 +138,9 @@ export async function scanLibrary(library: string): Promise<Workspace["library"]
   for (const dir of templateDirs) {
     for (const name of await listFiles(dir, ".yml")) {
       const scope = scopeOf(dir, templateDirs);
-      if (await isGroup(path.join(dir, `${name}.yml`))) groups.push({ kind: "group", name, scope });
-      else templates.push({ kind: "template", name, scope });
+      const description = await groupDescription(path.join(dir, `${name}.yml`));
+      if (description == null) templates.push({ kind: "template", name, scope });
+      else groups.push({ kind: "group", name, scope, ...(description ? { description } : {}) });
     }
   }
 

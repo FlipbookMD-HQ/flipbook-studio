@@ -5,10 +5,10 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { ZodError } from "zod";
 import { assetMime } from "@flipbook-md/core";
-import { TOKEN_PLACEHOLDER } from "../shared/api.js";
+import { CreateDeckRequestSchema, TOKEN_PLACEHOLDER } from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
-import { deckDetail, deckFile } from "./decks.js";
+import { createWorkspaceDeck, deckDetail, deckFile } from "./decks.js";
 import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
 
@@ -124,6 +124,13 @@ export function createApp(options: AppOptions) {
   );
   api.get("/workspace", async (c) => c.json(await scanWorkspace(options.workspace, options.library)));
   api.get("/decks/:id", async (c) => c.json(await deckDetail(options.workspace, c.req.param("id"))));
+  api.post("/decks", async (c) => {
+    const body: unknown = await c.req.json().catch(() => {
+      throw new StudioError(422, "VALIDATION_FAILED", "The request body is not JSON.");
+    });
+    const created = await createWorkspaceDeck(options.workspace, CreateDeckRequestSchema.parse(body));
+    return c.json(await deckDetail(options.workspace, created.id), 201);
+  });
   api.all("*", () => {
     throw new StudioError(404, "NOT_FOUND", "No such API route.");
   });
