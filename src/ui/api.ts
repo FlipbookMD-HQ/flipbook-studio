@@ -175,7 +175,7 @@ export const updateKit = (kind: KitKind, name: string, request: UpdateKitRequest
 
 export const previewKit = (
   kind: KitKind,
-  request: { source: string; deckId?: string; scope?: "library" | "builtin" },
+  request: { source: string; deckId?: string; scope?: "library" | "builtin"; name?: string },
   signal?: AbortSignal,
 ) =>
   apiFetch(`/api/kits/${kind}/preview`, KitPreviewResponseSchema, {

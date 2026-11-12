@@ -643,3 +643,90 @@ button:disabled {
     height: 520px;
   }
 }
+
+/* US-8: template grid editor */
+.kits-nav {
+  display: flex;
+  gap: 0.75rem;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+a.button {
+  display: inline-block;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+}
+a.button.primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.template-editor {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .template-editor {
+    grid-template-columns: 1fr;
+  }
+}
+.grid-editor {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+  width: min(100%, 240px);
+  aspect-ratio: 1080 / 1350;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+.grid-editor:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.grid-cell {
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+}
+.grid-cell.selected {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  border: 1px solid var(--accent);
+}
+.region-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.region-fields input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.segmented {
+  display: flex;
+  gap: 1rem;
+}
+.outcomes {
+  list-style: none;
+  padding: 0;
+}
+.outcomes .ok {
+  color: #7ad7a1;
+}
+.outcomes .failed {
+  color: var(--danger);
+}

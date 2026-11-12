@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import {
   BuiltInReadOnlyError,
   FileConflictError,
@@ -9,6 +10,8 @@ import {
   ReservedNameError,
   ValidationError,
   libraryRoot,
+  parsePlacement,
+  TEMPLATES,
   flipbookHome,
   loadPresentation,
   readKit,
@@ -63,7 +66,9 @@ async function coreRef(
 ): Promise<CoreKitRef> {
   if (scope !== "deck") return { kind, name, scope };
   const deck = await deckDir(root, kind, deckId);
-  return { kind, name: DECK_FILES[kind]!.replace(/\.\w+$/, ""), scope, deckDir: deck.absolute };
+  // A deck's templates.yml holds many templates; its ref names one of them (templates.yml#<name>).
+  const refName = kind === "template" ? name : DECK_FILES[kind]!.replace(/\.\w+$/, "");
+  return { kind, name: refName, scope, deckDir: deck.absolute };
 }
 
 /** Maps core kit errors to the API's error catalog. */
@@ -172,19 +177,21 @@ export async function updateKit(
   name: string,
   request: UpdateKitRequest,
 ): Promise<KitDoc> {
-  if (request.source == null) {
-    throw new StudioError(
-      422,
-      "VALIDATION_FAILED",
-      "Send the kit's source; form patches aren't supported yet.",
-      {
-        details: { field: "patch" },
-      },
-    );
+  const hasSource = request.source != null;
+  if (hasSource === (request.patch !== undefined)) {
+    throw new StudioError(422, "VALIDATION_FAILED", "Send either source or patch.", {
+      details: { field: "patch" },
+    });
+  }
+  if (request.baseHash === null && !(kind === "template" && request.scope === "deck" && !hasSource)) {
+    throw new StudioError(422, "VALIDATION_FAILED", "baseHash is required.", {
+      details: { field: "baseHash" },
+    });
   }
   const ref = await coreRef(root, kind, name, request.scope, request.deckId);
   try {
-    await writeKit(ref, { source: request.source }, request.baseHash);
+    const change = hasSource ? { source: request.source! } : { patch: request.patch ?? null };
+    await writeKit(ref, change, request.baseHash);
   } catch (error) {
     kitFailure(error, request.scope === "deck" ? DECK_FILES[kind]! : `${kind} "${name}"`);
   }
@@ -195,8 +202,9 @@ export async function updateKit(
 export async function previewKit(
   root: string,
   kind: KitKind,
-  request: { source: string; deckId?: string; scope?: "library" | "builtin" },
+  request: { source: string; deckId?: string; scope?: "library" | "builtin"; name?: string },
 ): Promise<KitPreviewResponse> {
+  if (kind === "template") return previewTemplate(root, request);
   if (kind !== "theme") {
     throw new StudioError(422, "VALIDATION_FAILED", `Previewing a ${kind} isn't available yet.`, {
       details: { field: "kind" },
@@ -208,6 +216,35 @@ export async function previewKit(
   }
   const assetRoot = path.join(request.scope === "builtin" ? libraryRoot() : flipbookHome(), "themes");
   return { html: await renderSampleDocument({ themeCss: request.source, assetRoot }), errors: [] };
+}
+
+const TEMPLATE_SAMPLE =
+  "# Placed here\n\nSample content shows where this template puts a slide's text.\n\n- First point\n- Second point";
+
+/** A template preview: one sample slide placed in the region, in the deck's theme when deckId is given. */
+async function previewTemplate(
+  root: string,
+  request: { source: string; deckId?: string; name?: string },
+): Promise<KitPreviewResponse> {
+  const name =
+    request.name && /^[a-z][a-z0-9_-]*$/.test(request.name) && !(request.name in TEMPLATES)
+      ? request.name
+      : "preview";
+  let placement;
+  try {
+    placement = parsePlacement(name, parseYaml(request.source));
+  } catch (error) {
+    return { html: "", errors: [(error as Error).message] };
+  }
+  const deck = request.deckId ? (await loadDeck(await findDeck(root, request.deckId))).presentation : null;
+  const html = await renderSampleDocument({
+    themeCss: deck?.themeCss ?? "",
+    canvas: deck?.theme ?? "midnight",
+    templates: { ...(deck?.templates ?? {}), [name]: placement },
+    slides: [{ role: name, template: name, markdown: TEMPLATE_SAMPLE }],
+    ...(deck ? { assetRoot: deck.root } : {}),
+  });
+  return { html, errors: [] };
 }
 
 /** Which deck-scope kit files a folder deck has. */
