@@ -21,6 +21,7 @@ export function Shell({
           <Link to="/kits/themes">Themes</Link>
           <Link to="/kits/templates">Templates</Link>
           <Link to="/kits/blueprints">Blueprints</Link>
+          <Link to="/kits/media">Media kits</Link>
         </nav>
         {crumb ? <span className="crumb">{crumb}</span> : null}
         {actions ? <div className="topbar-actions">{actions}</div> : null}

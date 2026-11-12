@@ -37,5 +37,10 @@ export default defineConfig({
       ...studio(".e2e-blueprints", 4397),
       command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-blueprints fixtures/ws && "${process.execPath}" e2e/fresh-workspace.mjs .e2e-bp-library && "${process.execPath}" bin/flipbook-studio.js .e2e-blueprints --no-open --port 4397 --library .e2e-bp-library`,
     },
+    // Media kit editor: an empty workspace and a library with two templates and a blueprint.
+    {
+      ...studio(".e2e-media", 4398),
+      command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-media && "${process.execPath}" e2e/fresh-workspace.mjs .e2e-media-library fixtures/kit-library && "${process.execPath}" bin/flipbook-studio.js .e2e-media --no-open --port 4398 --library .e2e-media-library`,
+    },
   ],
 });

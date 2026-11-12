@@ -11,6 +11,8 @@ import { TemplatesScreen } from "./screens/TemplatesScreen";
 import { TemplateEditor } from "./screens/TemplateEditor";
 import { BlueprintsScreen } from "./screens/BlueprintsScreen";
 import { BlueprintScreen } from "./screens/BlueprintScreen";
+import { MediaKitsScreen } from "./screens/MediaKitsScreen";
+import { MediaKitScreen } from "./screens/MediaKitScreen";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -32,6 +34,10 @@ const router = createBrowserRouter([
   { path: "/kits/blueprints/new", element: <BlueprintScreen /> },
   { path: "/kits/blueprints/library/:name", element: <BlueprintScreen /> },
   { path: "/kits/blueprints/deck/:deckId", element: <BlueprintScreen /> },
+  { path: "/kits/media", element: <MediaKitsScreen /> },
+  { path: "/kits/media/new", element: <MediaKitScreen /> },
+  { path: "/kits/media/library/:name", element: <MediaKitScreen /> },
+  { path: "/kits/media/builtin/:name", element: <MediaKitScreen /> },
 ]);
 
 createRoot(document.getElementById("root")!).render(

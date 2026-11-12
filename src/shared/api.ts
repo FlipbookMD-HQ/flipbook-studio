@@ -236,6 +236,28 @@ export const KitPreviewResponseSchema = z.object({
 });
 export type KitPreviewResponse = z.infer<typeof KitPreviewResponseSchema>;
 
+// US-10: media kits (groups).
+const GROUP_NAME = z
+  .string()
+  .regex(/^[a-z][a-z0-9_-]{0,59}$/, "Use lowercase letters, digits, - or _ (start with a letter).");
+export const CopyGroupRequestSchema = z.object({
+  toName: GROUP_NAME,
+  /** Where the group being copied lives (default: library, then built-in). */
+  scope: z.enum(["library", "builtin"]).optional(),
+});
+export type CopyGroupRequest = z.infer<typeof CopyGroupRequestSchema>;
+export const RenameGroupRequestSchema = z.object({
+  toName: GROUP_NAME,
+  baseHash: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type RenameGroupRequest = z.infer<typeof RenameGroupRequestSchema>;
+export const RenameGroupResponseSchema = z.object({
+  kit: KitDocSchema,
+  /** Workspace decks still naming the old group: they won't load until updated. */
+  decksUsingOldName: z.array(z.string()),
+});
+export type RenameGroupResponse = z.infer<typeof RenameGroupResponseSchema>;
+
 // US-6: present and export.
 export const PresentRequestSchema = z.object({ slideIndex: z.number().int().nonnegative().optional() });
 export const PresentResponseSchema = z.object({ url: z.string(), announcerUrl: z.string() });
