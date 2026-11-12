@@ -33,6 +33,8 @@ export const ERROR_CODES = [
   "LLM_TIMEOUT",
   "LLM_BAD_OUTPUT",
   "CANCELLED",
+  "PROPOSAL_NOT_FOUND",
+  "STALE_PROPOSAL",
   "INTERNAL",
 ] as const;
 
@@ -372,3 +374,97 @@ export const LlmTestRequestSchema = LlmModelsRequestSchema.extend({
 export type LlmTestRequest = z.infer<typeof LlmTestRequestSchema>;
 export const LlmTestResponseSchema = z.object({ reply: z.string(), latencyMs: z.number() });
 export type LlmTestResponse = z.infer<typeof LlmTestResponseSchema>;
+
+// US-12 to US-15: AI proposals.
+/**
+ * A slide ID as the server issues it: a manifest path inside the deck (folder decks) or `#<index>`
+ * (single files). Absolute paths, backslashes and `..` segments are refused outright.
+ */
+export const SlideIdSchema = z
+  .string()
+  .min(1)
+  .max(300)
+  .refine(
+    (id) =>
+      /^#\d+$/.test(id) ||
+      (!id.startsWith("/") && !id.includes("\\") && !id.split("/").includes("..") && !/^[a-z]:/i.test(id)),
+    "Not a slide ID.",
+  );
+const OpId = z.string().min(1).max(40);
+export const ProposalOpSchema = z.discriminatedUnion("kind", [
+  z.object({
+    id: OpId,
+    kind: z.literal("updateSlide"),
+    slideId: SlideIdSchema,
+    draft: SlideDraftSchema,
+    /** The slide as it was when the proposal was made (for the diff). */
+    before: SlideDraftSchema.optional(),
+    /** Blueprint violations of this slide with the draft applied. */
+    violations: z.array(ViolationSchema).optional(),
+  }),
+  z.object({
+    id: OpId,
+    kind: z.literal("addSlide"),
+    afterSlideId: SlideIdSchema.nullable(),
+    draft: SlideDraftSchema,
+  }),
+  z.object({ id: OpId, kind: z.literal("deleteSlide"), slideId: SlideIdSchema }),
+  z.object({
+    id: OpId,
+    kind: z.literal("moveSlide"),
+    slideId: SlideIdSchema,
+    toIndex: z.number().int().nonnegative(),
+  }),
+  z.object({
+    id: OpId,
+    kind: z.literal("writeKitFile"),
+    kit: z.object({
+      kind: KitKindSchema,
+      name: z.string().max(60),
+      scope: z.enum(["library", "deck"]),
+      deckId: z.string().optional(),
+    }),
+    source: z.string().max(50 * 1024),
+  }),
+]);
+export type ProposalOp = z.infer<typeof ProposalOpSchema>;
+export const ProposalSchema = z.object({
+  id: z.string(),
+  createdAt: z.string(),
+  deckId: z.string().nullable(),
+  summary: z.string(),
+  ops: z.array(ProposalOpSchema),
+  /** File key → hash when the proposal was made (deck files as in DeckDetail.hashes; kits as kit:<kind>:<scope>:<name>). */
+  baseHashes: z.record(z.string().nullable()),
+});
+export type Proposal = z.infer<typeof ProposalSchema>;
+export const ApplyProposalRequestSchema = z.object({ opIds: z.array(OpId).max(500) });
+export const ApplyProposalResponseSchema = z.object({
+  applied: z.array(z.string()),
+  rejected: z.array(
+    z.object({
+      opId: z.string(),
+      code: z.enum(["STALE_PROPOSAL", "KIT_INVALID", "VALIDATION_FAILED"]),
+      message: z.string(),
+    }),
+  ),
+  hashes: z.record(z.string()),
+});
+export type ApplyProposalResponse = z.infer<typeof ApplyProposalResponseSchema>;
+
+export const RewriteInstructionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("shorten") }),
+  z.object({ kind: z.literal("expand") }),
+  z.object({ kind: z.literal("translate"), language: z.string().trim().min(1, "Pick a language.").max(60) }),
+  z.object({ kind: z.literal("custom"), text: z.string().trim().min(1, "Say what to change.").max(2000) }),
+]);
+export type RewriteInstruction = z.infer<typeof RewriteInstructionSchema>;
+export const RewriteRequestSchema = z.object({
+  deckId: z.string(),
+  slideId: SlideIdSchema,
+  baseHash: Hash,
+  instruction: RewriteInstructionSchema,
+  /** A retry: the rule messages the previous proposal broke, so the model can fix them. */
+  avoid: z.array(z.string().max(500)).max(20).optional(),
+});
+export type RewriteRequest = z.infer<typeof RewriteRequestSchema>;
