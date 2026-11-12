@@ -7,6 +7,8 @@ import { DeckScreen } from "./screens/DeckScreen";
 import { SlideEditor } from "./screens/SlideEditor";
 import { ThemesScreen } from "./screens/ThemesScreen";
 import { ThemeEditor } from "./screens/ThemeEditor";
+import { TemplatesScreen } from "./screens/TemplatesScreen";
+import { TemplateEditor } from "./screens/TemplateEditor";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -20,6 +22,10 @@ const router = createBrowserRouter([
   { path: "/decks/:id/slides/:slideId", element: <SlideEditor /> },
   { path: "/kits/themes", element: <ThemesScreen /> },
   { path: "/kits/themes/:scope/:name", element: <ThemeEditor /> },
+  { path: "/kits/templates", element: <TemplatesScreen /> },
+  { path: "/kits/templates/new", element: <TemplateEditor /> },
+  { path: "/kits/templates/library/:name", element: <TemplateEditor /> },
+  { path: "/kits/templates/deck/:deckId/:name", element: <TemplateEditor /> },
 ]);
 
 createRoot(document.getElementById("root")!).render(
