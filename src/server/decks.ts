@@ -7,7 +7,7 @@ import {
   TEMPLATES,
   ValidationError,
   createDeck,
-  discoverPresentation,
+  loadPresentation,
   insertSlide,
   readSlide,
   removeSlide,
@@ -16,6 +16,7 @@ import {
   updateSlide,
   type Presentation,
   type SlideDraft,
+  type Violation,
 } from "@flipbook-md/core";
 import type { CreateDeckRequest, DeckDetail, SlideDoc, StructureResponse } from "../shared/api.js";
 import { StudioError } from "./errors.js";
@@ -31,10 +32,29 @@ export async function findDeck(root: string, id: string): Promise<DeckEntry> {
   return deck;
 }
 
-export async function loadDeck(deck: DeckEntry): Promise<Presentation> {
+interface Loaded {
+  presentation: Presentation;
+  violations: Violation[];
+}
+
+/**
+ * Loads a deck with its blueprint violations (never thrown), optionally with an unsaved draft
+ * applied in memory. A draft that isn't valid throws core's ValidationError (callers map it).
+ */
+export async function loadDeck(
+  deck: DeckEntry,
+  draft: { slideId: string; draft: SlideDraft } | null = null,
+): Promise<Loaded> {
   try {
-    return await discoverPresentation(deck.absolute);
+    return await loadPresentation(deck.absolute, { draft });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      if (error.code === "SLIDE_NOT_FOUND")
+        throw new StudioError(404, "SLIDE_NOT_FOUND", "No slide with that ID in this deck.", {
+          path: draft?.slideId ?? "",
+        });
+      if (draft) throw error;
+    }
     const apiError = loadError(error, deck.relative);
     throw new StudioError(422, "DECK_LOAD_FAILED", apiError.message, {
       path: deck.relative,
@@ -74,7 +94,7 @@ function renderError(error: unknown): never {
 
 async function slideDoc(
   deck: DeckEntry,
-  presentation: Presentation,
+  { presentation, violations }: Loaded,
   id: string,
   index: number,
 ): Promise<{ doc: SlideDoc; hash: string }> {
@@ -90,6 +110,8 @@ async function slideDoc(
     html: await renderSlideDocument(presentation, index, { assetBase: assetBase(id) }),
     draft: read.draft,
     file: deck.kind === "folder" ? slideId : path.basename(deck.absolute),
+    source: slide.source,
+    violations: violations.filter((violation) => violation.source === slide.source),
   };
   return { doc, hash: read.hash };
 }
@@ -97,11 +119,11 @@ async function slideDoc(
 /** Every slide's SlideDoc and every file hash (the manifest's too, for folder decks). */
 async function deckSlides(
   deck: DeckEntry,
-  presentation: Presentation,
+  loaded: Loaded,
   id: string,
 ): Promise<{ slides: SlideDoc[]; hashes: Record<string, string> }> {
   const docs = await Promise.all(
-    presentation.slides.map((_, index) => slideDoc(deck, presentation, id, index)),
+    loaded.presentation.slides.map((_, index) => slideDoc(deck, loaded, id, index)),
   );
   const hashes: Record<string, string> = {};
   if (deck.kind === "folder") {
@@ -114,8 +136,9 @@ async function deckSlides(
 
 export async function deckDetail(root: string, id: string): Promise<DeckDetail> {
   const deck = await findDeck(root, id);
-  const presentation = await loadDeck(deck);
-  const { slides, hashes } = await deckSlides(deck, presentation, id);
+  const loaded = await loadDeck(deck);
+  const { presentation, violations } = loaded;
+  const { slides, hashes } = await deckSlides(deck, loaded, id);
   return {
     id,
     path: deck.relative,
@@ -128,6 +151,8 @@ export async function deckDetail(root: string, id: string): Promise<DeckDetail> 
     hashes,
     templates: [...new Set([...Object.keys(TEMPLATES), ...Object.keys(presentation.templates ?? {})])],
     types: Object.keys(presentation.blueprint?.types ?? {}),
+    hasBlueprint: Boolean(presentation.blueprint),
+    violations,
   };
 }
 
@@ -137,14 +162,20 @@ export async function previewSlide(
   id: string,
   slideId: string | null,
   draft: SlideDraft | null,
-): Promise<{ html: string; violations: [] }> {
+): Promise<{ html: string; violations: Violation[] }> {
   const deck = await findDeck(root, id);
-  const presentation = await loadDeck(deck);
-  const index = slideId == null ? 0 : slideIndex(deck, presentation, slideId);
+  let loaded: Loaded;
+  try {
+    // The whole deck is checked with the draft applied, so violations match what a save would give.
+    loaded = await loadDeck(deck, slideId != null && draft ? { slideId, draft } : null);
+  } catch (error) {
+    renderError(error);
+  }
+  const index = slideId == null ? 0 : slideIndex(deck, loaded.presentation, slideId);
   try {
     return {
-      html: await renderSlideDocument(presentation, index, { draft, assetBase: assetBase(id) }),
-      violations: [],
+      html: await renderSlideDocument(loaded.presentation, index, { assetBase: assetBase(id) }),
+      violations: loaded.violations,
     };
   } catch (error) {
     renderError(error);
@@ -183,7 +214,7 @@ export async function saveSlide(
   slideId: string,
   baseHash: string,
   draft: SlideDraft,
-): Promise<{ slide: SlideDoc; hashes: Record<string, string>; violations: [] }> {
+): Promise<{ slide: SlideDoc; hashes: Record<string, string>; violations: Violation[] }> {
   const deck = await findDeck(root, id);
   let saved: { slideId: string; hashes: Record<string, string> };
   try {
@@ -191,10 +222,10 @@ export async function saveSlide(
   } catch (error) {
     writeFailure(error, slideId, "The slide changed on disk since you opened it.");
   }
-  const presentation = await loadDeck(deck);
-  const index = slideIndex(deck, presentation, saved.slideId);
-  const { doc } = await slideDoc(deck, presentation, id, index);
-  return { slide: doc, hashes: saved.hashes, violations: [] };
+  const loaded = await loadDeck(deck);
+  const index = slideIndex(deck, loaded.presentation, saved.slideId);
+  const { doc } = await slideDoc(deck, loaded, id, index);
+  return { slide: doc, hashes: saved.hashes, violations: loaded.violations };
 }
 
 const STRUCTURE_CONFLICT = "The deck changed on disk since you opened it.";
@@ -204,8 +235,12 @@ const structureFile = (deck: DeckEntry) =>
   deck.kind === "folder" ? "presentation.yml" : path.basename(deck.absolute);
 
 async function structureResult(deck: DeckEntry, id: string) {
-  const presentation = await loadDeck(deck);
-  return { presentation, ...(await deckSlides(deck, presentation, id)), violations: [] as [] };
+  const loaded = await loadDeck(deck);
+  return {
+    presentation: loaded.presentation,
+    ...(await deckSlides(deck, loaded, id)),
+    violations: loaded.violations,
+  };
 }
 
 /** POST /api/decks/:id/slides: adds a slide after `afterSlideId` (null: first). */

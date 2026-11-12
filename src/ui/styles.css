@@ -429,3 +429,60 @@ button:disabled {
   background: var(--danger);
   color: #1a0d0d;
 }
+
+/* Blueprint check */
+.check-ok {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+.check-ok::before {
+  content: "✓ ";
+  color: #7fd6a4;
+}
+.check-panel {
+  border: 1px solid #ffb86b66;
+  background: #ffb86b12;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+}
+.check-panel h2 {
+  font-size: 0.95rem;
+  margin: 0 0 0.4rem;
+  color: #ffb86b;
+}
+.check-panel ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.check-panel a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: #ffb86b88;
+}
+.slide-violations {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid #ffb86b;
+  background: #ffb86b12;
+  border-radius: 0 8px 8px 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.violation-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: #ffb86b;
+  color: #241400;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex: none;
+  margin-top: 0.35rem;
+}
