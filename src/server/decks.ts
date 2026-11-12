@@ -64,11 +64,11 @@ export async function loadDeck(
 }
 
 /** Folder decks use the manifest path; single-file decks use `#<index>`. */
-function slideIdAt(deck: DeckEntry, presentation: Presentation, index: number): string {
+export function slideIdAt(deck: DeckEntry, presentation: Presentation, index: number): string {
   return deck.kind === "folder" ? presentation.slides[index]!.source : `#${index}`;
 }
 
-function slideIndex(deck: DeckEntry, presentation: Presentation, slideId: string): number {
+export function slideIndex(deck: DeckEntry, presentation: Presentation, slideId: string): number {
   const index =
     deck.kind === "folder"
       ? presentation.slides.findIndex((slide) => slide.source === slideId)
@@ -132,6 +132,36 @@ async function deckSlides(
   }
   for (const { doc, hash } of docs) hashes[doc.file] = hash;
   return { slides: docs.map(({ doc }) => doc), hashes };
+}
+
+/** The file a slide lives in, as DeckDetail.hashes keys it. */
+export const slideFileKey = (deck: DeckEntry, slideId: string) =>
+  deck.kind === "folder" ? slideId : path.basename(deck.absolute);
+
+/** The file a structure change writes, as DeckDetail.hashes keys it. */
+export const structureKey = (deck: DeckEntry) =>
+  deck.kind === "folder" ? "presentation.yml" : path.basename(deck.absolute);
+
+/** Every file hash of a deck, keyed like DeckDetail.hashes. */
+export async function deckHashes(deck: DeckEntry): Promise<Record<string, string>> {
+  const { presentation } = await loadDeck(deck);
+  const hashes: Record<string, string> = {};
+  const files = new Set([
+    structureKey(deck),
+    ...presentation.slides.map((_, index) => slideFileKey(deck, slideIdAt(deck, presentation, index))),
+  ]);
+  for (const file of files) {
+    try {
+      hashes[file] = hashBytes(
+        await fs.readFile(
+          path.join(deck.kind === "folder" ? deck.absolute : path.dirname(deck.absolute), file),
+        ),
+      );
+    } catch {
+      // A slide file listed in the manifest but missing: the deck shows it as an error.
+    }
+  }
+  return hashes;
 }
 
 export async function deckDetail(root: string, id: string): Promise<DeckDetail> {

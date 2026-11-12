@@ -9,6 +9,7 @@ import { SlideList } from "./SlideList";
 import { SlideViolations, ViolationsPanel, violationsFor } from "./Violations";
 import { ErrorNotice, Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
+import { AiPanel } from "./AiPanel";
 
 const PREVIEW_DELAY_MS = 250;
 
@@ -215,9 +216,30 @@ export function SlideEditor() {
             <span className={dirty ? "status dirty" : "status"} data-testid="save-status">
               {saving ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}
             </span>
-            <button type="button" className="primary" disabled={!dirty || saving} onClick={() => void save()}>
-              Save
-            </button>
+            <span className="editor-bar-actions">
+              {base ? (
+                <AiPanel
+                  deckId={id}
+                  slideId={slideId}
+                  baseHash={base.hash}
+                  dirty={dirty || saving}
+                  onApplied={(result) => {
+                    if (!result.applied.length) return;
+                    // Reload the slide and every hash from disk once the refetch lands.
+                    loadedFor.current = null;
+                    void queryClient.invalidateQueries({ queryKey: ["deck", id] });
+                  }}
+                />
+              ) : null}
+              <button
+                type="button"
+                className="primary"
+                disabled={!dirty || saving}
+                onClick={() => void save()}
+              >
+                Save
+              </button>
+            </span>
           </div>
           {saveError ? <ErrorNotice error={saveError} /> : null}
           {data.hasBlueprint ? <SlideViolations violations={violationsFor(violations, slide)} /> : null}
