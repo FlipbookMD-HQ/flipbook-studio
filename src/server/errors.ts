@@ -1,6 +1,6 @@
 import type { ApiError, ErrorCode } from "../shared/api.js";
 
-type Status = 400 | 403 | 404 | 409 | 413 | 422 | 500;
+type Status = 400 | 403 | 404 | 409 | 413 | 422 | 424 | 500;
 
 /** A typed error the API maps to `{ error: { code, message, path?, details? } }`. */
 export class StudioError extends Error {

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ViolationBadge, ViolationsPanel, violationsFor } from "./Violations";
 import { ApiRequestError, getDeck } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
+import { DeckActions } from "./DeckActions";
 
 export function DeckScreen() {
   const { id = "" } = useParams();
@@ -23,7 +24,7 @@ export function DeckScreen() {
 
   const { title, path, slides, violations, hasBlueprint } = deck.data;
   return (
-    <Shell crumb={path}>
+    <Shell crumb={path} actions={<DeckActions deckId={deck.data.id} slideIndex={0} />}>
       <h1>{title}</h1>
       <ViolationsPanel
         deckId={deck.data.id}

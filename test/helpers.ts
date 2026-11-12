@@ -18,7 +18,11 @@ export async function write(root: string, files: Record<string, string>): Promis
   }
 }
 
-export async function makeApp(workspace: string, logs: string[] = []) {
+export async function makeApp(
+  workspace: string,
+  logs: string[] = [],
+  extra: Partial<Parameters<typeof createApp>[0]> = {},
+) {
   const uiDir = await tempDir("studio-ui-");
   await write(uiDir, {
     "index.html": `<meta name="flipbook-token" content="${TOKEN_PLACEHOLDER}"><div id="root"></div>`,
@@ -32,6 +36,7 @@ export async function makeApp(workspace: string, logs: string[] = []) {
     port: () => PORT,
     uiDir,
     log: (line) => logs.push(line),
+    ...extra,
   });
 }
 

@@ -21,5 +21,11 @@ export default defineConfig({
     // Fresh, writable workspaces: an empty one for creating decks, a copy of fixtures/edit for editing.
     fresh(".e2e-workspace", 4393),
     fresh(".e2e-edit", 4394, "fixtures/edit"),
+    // Present and export, on a PATH without ffmpeg: PNG export works, video reports ffmpeg missing.
+    {
+      ...fresh(".e2e-export", 4395, "fixtures/edit"),
+      command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-export fixtures/edit && "${process.execPath}" bin/flipbook-studio.js .e2e-export --no-open --port 4395`,
+      env: { FLIPBOOK_HOME: "fixtures/library", PATH: "/usr/bin:/bin" },
+    },
   ],
 });
