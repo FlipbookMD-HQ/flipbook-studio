@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ApiRequestError, getDeck } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 
@@ -27,18 +27,20 @@ export function DeckScreen() {
       <ol className="slide-grid">
         {slides.map((slide) => (
           <li key={slide.id} className="slide-thumb" data-testid="slide-thumb">
-            <div className="frame">
-              {/* Rendered slide HTML only ever appears here: no allow-scripts, no allow-same-origin. */}
-              <iframe
-                title={`Slide ${slide.index + 1}: ${slide.title}`}
-                sandbox=""
-                srcDoc={slide.html}
-                loading="lazy"
-              />
-            </div>
-            <p className="meta">
-              {slide.index + 1}. {slide.title || "Untitled"}
-            </p>
+            <Link to={`/decks/${deck.data.id}/slides/${encodeURIComponent(slide.id)}`} className="thumb-link">
+              <div className="frame">
+                {/* Rendered slide HTML only ever appears here: no allow-scripts, no allow-same-origin. */}
+                <iframe
+                  title={`Slide ${slide.index + 1}: ${slide.title}`}
+                  sandbox=""
+                  srcDoc={slide.html}
+                  loading="lazy"
+                />
+              </div>
+              <p className="meta">
+                {slide.index + 1}. {slide.title || "Untitled"}
+              </p>
+            </Link>
           </li>
         ))}
       </ol>

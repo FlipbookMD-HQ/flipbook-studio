@@ -31,13 +31,14 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@flipbook-md/core": "~0.2.0",
+    "@flipbook-md/core": "~0.3.0",
     "@hono/node-server": "^1.19.19",
     "hono": "^4.13.18",
     "yaml": "^2.9.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@codemirror/lang-markdown": "^6.5.2",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.64.1",
     "@tanstack/react-query": "^5.107.1",
@@ -45,6 +46,7 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^5.2.0",
+    "codemirror": "^6.0.2",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^15.15.0",

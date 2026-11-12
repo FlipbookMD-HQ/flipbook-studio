@@ -1,6 +1,9 @@
 import {
   type CreateDeckRequest,
   DeckDetailSchema,
+  PreviewResponseSchema,
+  SaveSlideResponseSchema,
+  type SlideDraft,
   ErrorEnvelopeSchema,
   TOKEN_HEADER,
   TOKEN_META,
@@ -46,3 +49,22 @@ export const getDeck = (id: string) => apiFetch(`/api/decks/${encodeURIComponent
 
 export const createDeck = (request: CreateDeckRequest) =>
   apiFetch("/api/decks", DeckDetailSchema, { method: "POST", body: JSON.stringify(request) });
+
+export const previewSlide = (
+  deckId: string,
+  slideId: string,
+  draft: SlideDraft | null,
+  signal?: AbortSignal,
+) =>
+  apiFetch(`/api/decks/${encodeURIComponent(deckId)}/preview`, PreviewResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ slideId, draft }),
+    signal,
+  });
+
+export const saveSlide = (deckId: string, slideId: string, baseHash: string, draft: SlideDraft) =>
+  apiFetch(
+    `/api/decks/${encodeURIComponent(deckId)}/slides/${encodeURIComponent(slideId)}`,
+    SaveSlideResponseSchema,
+    { method: "PUT", body: JSON.stringify({ baseHash, draft }) },
+  );

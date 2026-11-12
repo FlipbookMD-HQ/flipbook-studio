@@ -7,16 +7,19 @@ const studio = (workspace: string, port: number) => ({
   env: { FLIPBOOK_HOME: "fixtures/library" },
 });
 
+const fresh = (workspace: string, port: number, source = "") => {
+  const server = studio(workspace, port);
+  return { ...server, command: `node e2e/fresh-workspace.mjs ${workspace} ${source} && ${server.command}` };
+};
+
 export default defineConfig({
   testDir: "e2e",
   use: { ...devices["Desktop Chrome"] },
   webServer: [
     studio("fixtures/ws", 4391),
     studio("fixtures/empty", 4392),
-    // A fresh, writable workspace for the create-deck tests.
-    {
-      ...studio(".e2e-workspace", 4393),
-      command: `node e2e/fresh-workspace.mjs && ${studio(".e2e-workspace", 4393).command}`,
-    },
+    // Fresh, writable workspaces: an empty one for creating decks, a copy of fixtures/edit for editing.
+    fresh(".e2e-workspace", 4393),
+    fresh(".e2e-edit", 4394, "fixtures/edit"),
   ],
 });
