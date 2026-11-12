@@ -8,6 +8,7 @@ import { MarkdownEditor } from "./MarkdownEditor";
 import { SlideList } from "./SlideList";
 import { SlideViolations, ViolationsPanel, violationsFor } from "./Violations";
 import { ErrorNotice, Shell } from "./Shell";
+import { DeckActions } from "./DeckActions";
 
 const PREVIEW_DELAY_MS = 250;
 
@@ -185,6 +186,7 @@ export function SlideEditor() {
           <Link to={`/decks/${id}`}>{data.title}</Link> · slide {slide.index + 1}
         </>
       }
+      actions={<DeckActions deckId={id} slideIndex={slide.index} />}
     >
       <ViolationsPanel
         deckId={id}

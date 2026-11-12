@@ -486,3 +486,52 @@ button:disabled {
   flex: none;
   margin-top: 0.35rem;
 }
+
+/* US-6: present and export */
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  position: relative;
+}
+.announcer-link {
+  color: var(--accent);
+}
+.popover {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(420px, calc(100vw - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem;
+  z-index: 10;
+}
+.field select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+.export-status progress {
+  width: 100%;
+}
+.install-command {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.install-command code {
+  flex: 1;
+  background: var(--bg);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+}
+.violations-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
