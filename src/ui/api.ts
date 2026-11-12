@@ -6,6 +6,12 @@ import {
   KitDocSchema,
   KitPreviewResponseSchema,
   RenameGroupResponseSchema,
+  SettingsSchema,
+  LlmModelsResponseSchema,
+  LlmTestResponseSchema,
+  type SettingsPatch,
+  type LlmModelsRequest,
+  type LlmTestRequest,
   type CopyGroupRequest,
   type RenameGroupRequest,
   type CreateKitRequest,
@@ -198,3 +204,16 @@ export const renameGroup = (name: string, request: RenameGroupRequest) =>
     method: "POST",
     body: JSON.stringify(request),
   });
+
+// US-11: settings and the local LLM.
+export const getSettings = () => apiFetch("/api/settings", SettingsSchema);
+export const putSettings = (patch: SettingsPatch) =>
+  apiFetch("/api/settings", SettingsSchema, { method: "PUT", body: JSON.stringify(patch) });
+export const listLlmModels = (request: LlmModelsRequest, signal?: AbortSignal) =>
+  apiFetch("/api/llm/models", LlmModelsResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(request),
+    signal,
+  });
+export const testLlm = (request: LlmTestRequest) =>
+  apiFetch("/api/llm/test", LlmTestResponseSchema, { method: "POST", body: JSON.stringify(request) });

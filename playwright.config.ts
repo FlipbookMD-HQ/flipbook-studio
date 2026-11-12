@@ -26,7 +26,11 @@ export default defineConfig({
     {
       ...fresh(".e2e-export", 4395, "fixtures/edit"),
       command: `"${process.execPath}" e2e/fresh-workspace.mjs .e2e-export fixtures/edit && "${process.execPath}" bin/flipbook-studio.js .e2e-export --no-open --port 4395`,
-      env: { FLIPBOOK_HOME: "fixtures/library", FLIPBOOK_STUDIO_CONFIG_DIR: ".e2e-config/4395", PATH: "/usr/bin:/bin" },
+      env: {
+        FLIPBOOK_HOME: "fixtures/library",
+        FLIPBOOK_STUDIO_CONFIG_DIR: ".e2e-config/4395",
+        PATH: "/usr/bin:/bin",
+      },
     },
     // Theme editor: a fresh workspace and a fresh, empty library.
     {
