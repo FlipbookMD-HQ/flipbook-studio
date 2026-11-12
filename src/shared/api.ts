@@ -17,6 +17,11 @@ export const ERROR_CODES = [
   "FILE_CONFLICT",
   "WRITE_FAILED",
   "LAST_SLIDE",
+  "BLUEPRINT_FAILED",
+  "DEPENDENCY_MISSING",
+  "JOB_RUNNING",
+  "JOB_NOT_FOUND",
+  "EXPORT_FAILED",
   "INTERNAL",
 ] as const;
 
@@ -161,6 +166,60 @@ export const AddSlideRequestSchema = z.object({
 export const AddSlideResponseSchema = StructureResponseSchema.extend({ slide: SlideDocSchema });
 export const OrderRequestSchema = z.object({ baseHash: Hash, slideIds: z.array(z.string()).max(1000) });
 export const DeleteSlideQuerySchema = z.object({ baseHash: Hash });
+
+// US-6: present and export.
+export const PresentRequestSchema = z.object({ slideIndex: z.number().int().nonnegative().optional() });
+export const PresentResponseSchema = z.object({ url: z.string(), announcerUrl: z.string() });
+
+export const ExportRequestSchema = z.object({
+  /** A core preset name (GET /api/decks/:id/exports lists them). */
+  preset: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/),
+  format: z.enum(["png", "video"]),
+  /** Workspace-relative folder. Defaults to configuration.yml's export.output, else exports/<deck>/<preset>-<format>. */
+  outputDir: z.string().min(1).max(500).optional(),
+  /** Video length in seconds; defaults to configuration.yml's export.duration. */
+  duration: z.number().positive().max(1800).optional(),
+});
+export type ExportRequest = z.infer<typeof ExportRequestSchema>;
+
+export const ExportJobSchema = z.object({
+  id: z.string(),
+  deckId: z.string(),
+  preset: z.string(),
+  format: z.enum(["png", "video"]),
+  state: z.enum(["running", "done", "failed", "cancelled"]),
+  progress: z.object({ done: z.number(), total: z.number() }),
+  /** Workspace-relative output folder. */
+  outputDir: z.string().nullable(),
+  files: z.array(z.string()),
+  error: ApiErrorSchema.nullable(),
+});
+export type ExportJob = z.infer<typeof ExportJobSchema>;
+
+/** SSE events on GET /api/jobs/:id/events. A new connection first gets the current state. */
+export const JobEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("progress"), done: z.number(), total: z.number() }),
+  z.object({ type: z.literal("done"), outputDir: z.string(), files: z.array(z.string()) }),
+  z.object({ type: z.literal("cancelled"), outputDir: z.string(), files: z.array(z.string()) }),
+  z.object({ type: z.literal("failed"), error: ApiErrorSchema }),
+]);
+export type JobEvent = z.infer<typeof JobEventSchema>;
+
+/** GET /api/decks/:id/exports: what the export dialog needs, and the deck's job to reconnect to. */
+export const ExportsInfoSchema = z.object({
+  job: ExportJobSchema.nullable(),
+  presets: z.array(z.object({ name: z.string(), width: z.number(), height: z.number(), use: z.string() })),
+  defaults: z.object({
+    preset: z.string(),
+    format: z.enum(["png", "video"]),
+    /** Set when configuration.yml names an output folder (workspace-relative). */
+    outputDir: z.string().nullable(),
+    /** Otherwise the folder is `${outputBase}/<preset>-<format>`. */
+    outputBase: z.string(),
+    duration: z.number().nullable(),
+  }),
+});
+export type ExportsInfo = z.infer<typeof ExportsInfoSchema>;
 
 export const TOKEN_HEADER = "x-flipbook-token";
 export const TOKEN_META = "flipbook-token";

@@ -196,7 +196,10 @@ export async function launch(
     url,
     port: bound.port,
     token,
-    close: () => new Promise<void>((resolve) => bound.server.close(() => resolve())),
+    close: async () => {
+      await app.shutdown();
+      await new Promise<void>((resolve) => bound.server.close(() => resolve()));
+    },
   };
 }
 
