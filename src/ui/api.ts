@@ -1,7 +1,9 @@
 import {
   type CreateDeckRequest,
   DeckDetailSchema,
+  AddSlideResponseSchema,
   PreviewResponseSchema,
+  StructureResponseSchema,
   SaveSlideResponseSchema,
   type SlideDraft,
   ErrorEnvelopeSchema,
@@ -68,3 +70,24 @@ export const saveSlide = (deckId: string, slideId: string, baseHash: string, dra
     SaveSlideResponseSchema,
     { method: "PUT", body: JSON.stringify({ baseHash, draft }) },
   );
+
+const deckUrl = (deckId: string) => `/api/decks/${encodeURIComponent(deckId)}`;
+
+export const addSlide = (deckId: string, baseHash: string, afterSlideId: string | null, draft: SlideDraft) =>
+  apiFetch(`${deckUrl(deckId)}/slides`, AddSlideResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ baseHash, afterSlideId, draft }),
+  });
+
+export const deleteSlide = (deckId: string, slideId: string, baseHash: string) =>
+  apiFetch(
+    `${deckUrl(deckId)}/slides/${encodeURIComponent(slideId)}?baseHash=${encodeURIComponent(baseHash)}`,
+    StructureResponseSchema,
+    { method: "DELETE" },
+  );
+
+export const reorderSlides = (deckId: string, slideIds: string[], baseHash: string) =>
+  apiFetch(`${deckUrl(deckId)}/order`, StructureResponseSchema, {
+    method: "PUT",
+    body: JSON.stringify({ baseHash, slideIds }),
+  });

@@ -6,14 +6,26 @@ import { bodyLimit } from "hono/body-limit";
 import { ZodError } from "zod";
 import { assetMime } from "@flipbook-md/core";
 import {
+  AddSlideRequestSchema,
   CreateDeckRequestSchema,
+  DeleteSlideQuerySchema,
+  OrderRequestSchema,
   PreviewRequestSchema,
   SaveSlideRequestSchema,
   TOKEN_PLACEHOLDER,
 } from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
-import { createWorkspaceDeck, deckDetail, deckFile, previewSlide, saveSlide } from "./decks.js";
+import {
+  addSlide,
+  createWorkspaceDeck,
+  deckDetail,
+  deckFile,
+  deleteSlide,
+  orderSlides,
+  previewSlide,
+  saveSlide,
+} from "./decks.js";
 import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
 
@@ -138,6 +150,18 @@ export function createApp(options: AppOptions) {
   api.post("/decks/:id/preview", async (c) => {
     const { slideId, draft } = PreviewRequestSchema.parse(await jsonBody(c));
     return c.json(await previewSlide(options.workspace, c.req.param("id"), slideId, draft));
+  });
+  api.post("/decks/:id/slides", async (c) => {
+    const { baseHash, afterSlideId, draft } = AddSlideRequestSchema.parse(await jsonBody(c));
+    return c.json(await addSlide(options.workspace, c.req.param("id"), afterSlideId, baseHash, draft), 201);
+  });
+  api.delete("/decks/:id/slides/:slideId{.+}", async (c) => {
+    const { baseHash } = DeleteSlideQuerySchema.parse({ baseHash: c.req.query("baseHash") });
+    return c.json(await deleteSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash));
+  });
+  api.put("/decks/:id/order", async (c) => {
+    const { baseHash, slideIds } = OrderRequestSchema.parse(await jsonBody(c));
+    return c.json(await orderSlides(options.workspace, c.req.param("id"), slideIds, baseHash));
   });
   // Folder slide IDs contain slashes ("slides/01.slide.md"); the client percent-encodes them.
   api.put("/decks/:id/slides/:slideId{.+}", async (c) => {

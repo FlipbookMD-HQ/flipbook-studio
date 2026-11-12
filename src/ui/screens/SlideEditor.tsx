@@ -5,6 +5,7 @@ import { ApiRequestError, getDeck, previewSlide, saveSlide } from "../api";
 import type { ApiError, DeckDetail, SlideDraft } from "../../shared/api";
 import { ConflictDialog, type DiskVersion } from "./ConflictDialog";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { SlideList } from "./SlideList";
 import { ErrorNotice, Shell } from "./Shell";
 
 const PREVIEW_DELAY_MS = 250;
@@ -177,21 +178,18 @@ export function SlideEditor() {
       }
     >
       <div className="editor">
-        <nav className="slide-list" aria-label="Slides">
-          <ol>
-            {data.slides.map((item) => (
-              <li key={item.id}>
-                <Link
-                  to={`/decks/${id}/slides/${encodeURIComponent(item.id)}`}
-                  aria-current={item.id === slideId ? "page" : undefined}
-                  onClick={() => (loadedFor.current = null)}
-                >
-                  {item.index + 1}. {item.title || "Untitled"}
-                </Link>
-              </li>
-            ))}
-          </ol>
-        </nav>
+        <SlideList
+          deck={data}
+          currentId={slideId}
+          locked={dirty || saving}
+          onOpen={() => (loadedFor.current = null)}
+          onChanged={(next) => {
+            // The structure write changed hashes (and, in single files, slide IDs): reload the slide.
+            loadedFor.current = null;
+            if (next !== slideId)
+              navigate(`/decks/${id}/slides/${encodeURIComponent(next)}`, { replace: true });
+          }}
+        />
 
         <section className="editor-main" aria-label="Slide">
           <div className="editor-bar">

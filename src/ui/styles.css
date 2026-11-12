@@ -366,3 +366,66 @@ button:disabled {
   min-width: 0;
   box-sizing: border-box;
 }
+
+/* Slide list: drag handle, actions */
+.slide-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.15rem;
+  border-radius: 6px;
+  background: var(--bg);
+}
+.slide-row.dragging {
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 6px 18px #0008;
+}
+.slide-row a {
+  flex: 1;
+  min-width: 0;
+}
+.drag-handle {
+  padding: 0.35rem 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  line-height: 1.2;
+}
+.drag-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  border-radius: 4px;
+}
+.drag-handle:disabled {
+  cursor: not-allowed;
+}
+.slide-actions {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+.slide-actions button {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.slide-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.slide-actions button.danger {
+  color: var(--danger);
+  border-color: #ff8a8a55;
+}
+.slide-actions button.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+.dialog .actions button.danger {
+  background: var(--danger);
+  color: #1a0d0d;
+}
