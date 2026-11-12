@@ -12,6 +12,8 @@ import {
   ExportRequestSchema,
   CreateKitRequestSchema,
   KitPreviewRequestSchema,
+  CopyGroupRequestSchema,
+  RenameGroupRequestSchema,
   KitQuerySchema,
   UpdateKitRequestSchema,
   PresentRequestSchema,
@@ -26,7 +28,7 @@ import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
 import { coreExports, exportsInfo, startExport, type ExportServices } from "./exports.js";
 import { JobRegistry } from "./jobs.js";
-import { createKit, getKit, parseKind, previewKit, updateKit } from "./kits.js";
+import { copyGroup, createKit, getKit, parseKind, previewKit, renameGroup, updateKit } from "./kits.js";
 import { PlayerRegistry } from "./present.js";
 import {
   addSlide,
@@ -210,6 +212,26 @@ export function createApp(options: AppOptions) {
     });
     return c.json(await getKit(options.workspace, kind, c.req.param("name"), scope, deckId));
   });
+  // US-10: copy and rename media kits.
+  api.post("/kits/group/:name/copy", async (c) =>
+    c.json(
+      await copyGroup(
+        options.workspace,
+        c.req.param("name"),
+        CopyGroupRequestSchema.parse(await jsonBody(c)),
+      ),
+      201,
+    ),
+  );
+  api.post("/kits/group/:name/rename", async (c) =>
+    c.json(
+      await renameGroup(
+        options.workspace,
+        c.req.param("name"),
+        RenameGroupRequestSchema.parse(await jsonBody(c)),
+      ),
+    ),
+  );
   api.post("/kits/:kind", async (c) => {
     const kind = parseKind(c.req.param("kind"));
     return c.json(
