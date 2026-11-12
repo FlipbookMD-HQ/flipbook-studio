@@ -32,6 +32,9 @@ import {
   TOKEN_META,
   WorkspaceSchema,
   type ApiError,
+  ApplyProposalResponseSchema,
+  type RewriteRequest,
+  type Proposal,
 } from "../shared/api";
 import { z } from "zod";
 
@@ -217,3 +220,76 @@ export const listLlmModels = (request: LlmModelsRequest, signal?: AbortSignal) =
   });
 export const testLlm = (request: LlmTestRequest) =>
   apiFetch("/api/llm/test", LlmTestResponseSchema, { method: "POST", body: JSON.stringify(request) });
+
+/** One event of an AI stream (US-12 to US-15). */
+export type AiEvent =
+  | { event: "token"; data: { text: string } }
+  | { event: "notice"; data: { message: string } }
+  | { event: "proposal"; data: Proposal }
+  | { event: "done"; data: { noChange?: boolean } & Record<string, unknown> }
+  | { event: "failed"; data: { error: ApiError } };
+
+/**
+ * POSTs to an AI endpoint and reads its server-sent events until `done` or `failed`. A non-stream
+ * error answer (409 LLM_NOT_CONFIGURED, 422…) throws ApiRequestError before any event.
+ */
+export async function streamAi(
+  url: string,
+  body: unknown,
+  onEvent: (event: AiEvent) => void,
+  signal: AbortSignal,
+) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { [TOKEN_HEADER]: token(), "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    const envelope = ErrorEnvelopeSchema.safeParse(await response.json().catch(() => null));
+    throw new ApiRequestError(
+      response.status,
+      envelope.success
+        ? envelope.data.error
+        : { code: "INTERNAL", message: `Request failed with ${response.status}.` },
+    );
+  }
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value;
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) !== -1) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const event = /^event: ?(.*)$/m.exec(block)?.[1] ?? "message";
+      const data = block
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      onEvent({ event, data: data ? JSON.parse(data) : null } as AiEvent);
+    }
+  }
+}
+
+export const rewriteSlide = (
+  request: RewriteRequest,
+  onEvent: (event: AiEvent) => void,
+  signal: AbortSignal,
+) => streamAi("/api/ai/rewrite", request, onEvent, signal);
+
+export const applyProposal = (id: string, opIds: string[]) =>
+  apiFetch(`/api/proposals/${encodeURIComponent(id)}/apply`, ApplyProposalResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ opIds }),
+  });
+
+export async function discardProposal(id: string): Promise<void> {
+  await fetch(`/api/proposals/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { [TOKEN_HEADER]: token() },
+  });
+}

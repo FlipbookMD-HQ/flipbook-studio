@@ -40,8 +40,13 @@ Studio depends on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md
 
 Open **Settings** in Studio, pick Ollama, LM Studio or a custom OpenAI-compatible base URL, choose a model and click **Test**. Settings are stored outside your decks, in `settings.json` in your config folder (`~/Library/Application Support/flipbook-studio` on macOS, `$XDG_CONFIG_HOME/flipbook-studio` or `~/.config/flipbook-studio` on Linux). The file is readable only by you, because it can hold an API key. Set `FLIPBOOK_STUDIO_CONFIG_DIR` to use another folder.
 
+In the slide editor, **AI** rewrites the open slide (Shorten, Expand, Translate or a custom instruction). Save your edits first. The answer shows as a diff with any blueprint violations; nothing changes on disk until you accept it.
+
 ### Review checklist for AI features
 
 - Every AI button is rendered through `<AiAction>` (`src/ui/ai.tsx`), so it is disabled, with a link to Settings, until a model is set up.
+- Every AI edit is a proposal shown in `<ProposalReview>` (`src/ui/screens/ProposalReview.tsx`); nothing is written until an op is accepted. Only generate-deck writes directly (into a new deck).
+- Model output is data: it goes through a zod schema in `structuredCall` (`src/server/ai/structured.ts`), never into code, and slide IDs in ops are refused when they look like paths.
+- Prompts and replies are logged only with `FLIPBOOK_DEBUG=ai`.
 - Tests use `FakeProvider` or the HTTP stub in `test/support/` (never a real model). Tests tagged for a real model live in `test/real-llm/` and run in the nightly workflow only.
 - An API key never appears in a response, a log line or an error message.

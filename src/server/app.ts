@@ -16,6 +16,8 @@ import {
   LlmModelsRequestSchema,
   LlmTestRequestSchema,
   SettingsPatchSchema,
+  RewriteRequestSchema,
+  ApplyProposalRequestSchema,
   RenameGroupRequestSchema,
   KitQuerySchema,
   UpdateKitRequestSchema,
@@ -48,6 +50,9 @@ import {
 } from "./decks.js";
 import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
+import { ProposalStore, applyProposal } from "./ai/proposals.js";
+import { prepareRewrite, runRewrite } from "./ai/rewrite.js";
+import { sseTask } from "./ai/sse.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -124,6 +129,15 @@ export function createApp(options: AppOptions) {
     ? Promise.resolve(options.settings)
     : SettingsStore.open(configDir(), log);
   const llmProvider = options.llmProvider ?? defaultProviderFactory;
+  const proposals = new ProposalStore();
+  /** The saved model and a provider for it, or 409 LLM_NOT_CONFIGURED (always before streaming). */
+  const configuredLlm = async () => {
+    const llm = (await settingsStore).current().llm;
+    if (!llm?.baseUrl || !llm.model)
+      throw new StudioError(409, "LLM_NOT_CONFIGURED", "Set up a local model in Settings first.");
+    const provider = llmProvider({ baseUrl: llm.baseUrl, apiKey: llm.apiKey, timeoutMs: llm.timeoutMs });
+    return { llm: { ...llm, model: llm.model }, provider };
+  };
 
   app.use("*", async (c, next) => {
     const requestId = crypto.randomBytes(4).toString("hex");
@@ -251,6 +265,25 @@ export function createApp(options: AppOptions) {
       ),
     ),
   );
+  // US-12: AI rewrite and proposals.
+  api.post("/ai/rewrite", async (c) => {
+    const request = RewriteRequestSchema.parse(await jsonBody(c));
+    const { llm, provider } = await configuredLlm();
+    const prepared = await prepareRewrite(options.workspace, request);
+    return sseTask(
+      c.req.raw,
+      (context) => runRewrite(context, prepared, request, { provider, llm, store: proposals, log }),
+      { log, baseUrl: llm.baseUrl, model: llm.model },
+    );
+  });
+  api.post("/proposals/:id/apply", async (c) => {
+    const { opIds } = ApplyProposalRequestSchema.parse(await jsonBody(c));
+    return c.json(await applyProposal(options.workspace, proposals, c.req.param("id"), opIds));
+  });
+  api.delete("/proposals/:id", (c) => {
+    proposals.delete(c.req.param("id"));
+    return c.body(null, 204);
+  });
   // US-10: copy and rename media kits.
   api.post("/kits/group/:name/copy", async (c) =>
     c.json(

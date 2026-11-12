@@ -62,7 +62,8 @@ async function deckDir(root: string, kind: KitKind, deckId: string | undefined):
   return deck;
 }
 
-async function coreRef(
+/** The core ref for a Studio kit ref (deck scope resolved to the deck's folder). */
+export async function coreRef(
   root: string,
   kind: KitKind,
   name: string,
