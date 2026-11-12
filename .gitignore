@@ -5,3 +5,4 @@ playwright-report/
 .DS_Store
 *.log
 .e2e-workspace/
+.e2e-edit/
