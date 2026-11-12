@@ -10,6 +10,10 @@ import {
   AddSlideRequestSchema,
   CreateDeckRequestSchema,
   ExportRequestSchema,
+  CreateKitRequestSchema,
+  KitPreviewRequestSchema,
+  KitQuerySchema,
+  UpdateKitRequestSchema,
   PresentRequestSchema,
   type JobEvent,
   DeleteSlideQuerySchema,
@@ -22,6 +26,7 @@ import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
 import { coreExports, exportsInfo, startExport, type ExportServices } from "./exports.js";
 import { JobRegistry } from "./jobs.js";
+import { createKit, getKit, parseKind, previewKit, updateKit } from "./kits.js";
 import { PlayerRegistry } from "./present.js";
 import {
   addSlide,
@@ -189,6 +194,33 @@ export function createApp(options: AppOptions) {
       CreateDeckRequestSchema.parse(await jsonBody(c)),
     );
     return c.json(await deckDetail(options.workspace, created.id), 201);
+  });
+  // US-7: kits.
+  api.post("/kits/:kind/preview", async (c) => {
+    const kind = parseKind(c.req.param("kind"));
+    return c.json(
+      await previewKit(options.workspace, kind, KitPreviewRequestSchema.parse(await jsonBody(c))),
+    );
+  });
+  api.get("/kits/:kind/:name", async (c) => {
+    const kind = parseKind(c.req.param("kind"));
+    const { scope, deckId } = KitQuerySchema.parse({
+      scope: c.req.query("scope"),
+      deckId: c.req.query("deckId"),
+    });
+    return c.json(await getKit(options.workspace, kind, c.req.param("name"), scope, deckId));
+  });
+  api.post("/kits/:kind", async (c) => {
+    const kind = parseKind(c.req.param("kind"));
+    return c.json(
+      await createKit(options.workspace, kind, CreateKitRequestSchema.parse(await jsonBody(c))),
+      201,
+    );
+  });
+  api.put("/kits/:kind/:name", async (c) => {
+    const kind = parseKind(c.req.param("kind"));
+    const request = UpdateKitRequestSchema.parse(await jsonBody(c));
+    return c.json(await updateKit(options.workspace, kind, c.req.param("name"), request));
   });
   // US-6: present and export.
   api.post("/decks/:id/present", async (c) => {

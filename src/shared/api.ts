@@ -18,6 +18,9 @@ export const ERROR_CODES = [
   "WRITE_FAILED",
   "LAST_SLIDE",
   "BLUEPRINT_FAILED",
+  "KIT_EXISTS",
+  "BUILT_IN_READONLY",
+  "RESERVED_NAME",
   "DEPENDENCY_MISSING",
   "JOB_RUNNING",
   "JOB_NOT_FOUND",
@@ -53,6 +56,8 @@ export const DeckSummarySchema = z.object({
   title: z.string(),
   slideCount: z.number().int().nonnegative(),
   group: z.string().nullable(),
+  /** Deck-scope kit files a folder deck has (presentation.css, templates.yml, blueprint.yml). */
+  deckKits: z.array(z.enum(["theme", "template", "blueprint"])),
   error: ApiErrorSchema.nullable(),
 });
 export type DeckSummary = z.infer<typeof DeckSummarySchema>;
@@ -166,6 +171,64 @@ export const AddSlideRequestSchema = z.object({
 export const AddSlideResponseSchema = StructureResponseSchema.extend({ slide: SlideDocSchema });
 export const OrderRequestSchema = z.object({ baseHash: Hash, slideIds: z.array(z.string()).max(1000) });
 export const DeleteSlideQuerySchema = z.object({ baseHash: Hash });
+
+// US-7: kits (themes first; templates, blueprints and groups follow in US-8 to US-10).
+export const KIT_KINDS = ["theme", "template", "blueprint", "group"] as const;
+export const KitKindSchema = z.enum(KIT_KINDS);
+export type KitKind = z.infer<typeof KitKindSchema>;
+export const KitScopeSchema = z.enum(["library", "deck", "builtin"]);
+export type KitScope = z.infer<typeof KitScopeSchema>;
+const KIT_SOURCE = z.string().max(512 * 1024);
+
+export const KitDocSchema = z.object({
+  ref: z.object({
+    kind: KitKindSchema,
+    name: z.string(),
+    scope: KitScopeSchema,
+    deckId: z.string().optional(),
+  }),
+  source: z.string(),
+  /** The normalizer's output for YAML kits; null for CSS or an invalid file. */
+  parsed: z.unknown(),
+  hash: z.string(),
+  builtIn: z.boolean(),
+  /** Why the file on disk doesn't validate, or null. */
+  invalid: z.string().nullable(),
+  /** Workspace decks whose style, group or deck scope uses this kit. */
+  usedBy: z.array(z.string()),
+});
+export type KitDoc = z.infer<typeof KitDocSchema>;
+
+export const KitQuerySchema = z.object({ scope: KitScopeSchema, deckId: z.string().optional() });
+export const CreateKitRequestSchema = z.object({
+  name: z.string().max(60),
+  scope: z.enum(["library", "deck"]),
+  deckId: z.string().optional(),
+  source: KIT_SOURCE,
+});
+export type CreateKitRequest = z.infer<typeof CreateKitRequestSchema>;
+export const UpdateKitRequestSchema = z.object({
+  scope: KitScopeSchema,
+  deckId: z.string().optional(),
+  baseHash: z.string().regex(/^[0-9a-f]{64}$/),
+  source: KIT_SOURCE.optional(),
+  /** RFC 7386 merge patch for YAML kits (US-8). */
+  patch: z.record(z.unknown()).optional(),
+});
+export type UpdateKitRequest = z.infer<typeof UpdateKitRequestSchema>;
+export const KitPreviewRequestSchema = z.object({
+  source: KIT_SOURCE,
+  /** Preview on this deck's slides instead of the sample deck. */
+  deckId: z.string().optional(),
+  /** Where a theme's url() files live without a deck: the library (default) or the built-ins. */
+  scope: z.enum(["library", "builtin"]).optional(),
+});
+export const KitPreviewResponseSchema = z.object({
+  html: z.string(),
+  errors: z.array(z.string()),
+  affectedSlides: z.array(ViolationSchema).optional(),
+});
+export type KitPreviewResponse = z.infer<typeof KitPreviewResponseSchema>;
 
 // US-6: present and export.
 export const PresentRequestSchema = z.object({ slideIndex: z.number().int().nonnegative().optional() });
