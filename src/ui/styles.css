@@ -134,3 +134,87 @@ button:disabled {
 .slide-grid {
   grid-template-columns: repeat(auto-fill, 270px);
 }
+
+/* New deck dialog */
+.dialog {
+  width: min(560px, calc(100vw - 2rem));
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.5rem;
+}
+.dialog::backdrop {
+  background: #0009;
+}
+.dialog h2 {
+  margin-top: 0;
+}
+.field {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0 0 1rem;
+  border: 0;
+  padding: 0;
+}
+.field > span,
+.field legend {
+  font-weight: 600;
+}
+.field input:not([type="radio"]) {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+.field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.choice {
+  display: block;
+  padding: 0.3rem 0;
+}
+.choice .hint {
+  display: block;
+  margin-left: 1.6rem;
+}
+.kit-picker {
+  max-height: 14rem;
+  overflow: auto;
+}
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.field-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+.badge {
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.actions button:not(.primary) {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+.brand {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.crumb {
+  min-width: 0;
+}
