@@ -67,12 +67,15 @@ export function ProposalReview({
   onApplied,
   onRetry,
   onClose,
+  staleOpIds,
 }: {
   proposal: Proposal;
   onApplied: (result: ApplyProposalResponse) => void;
   /** Ask again, telling the model which rules the proposal broke. */
   onRetry?: (violations: Violation[]) => void;
   onClose: () => void;
+  /** Ops the caller knows are stale (their file changed since): shown stale, never applied. */
+  staleOpIds?: ReadonlySet<string>;
 }) {
   const [states, setStates] = useState<Record<string, OpState>>(() =>
     Object.fromEntries(proposal.ops.map((op) => [op.id, "pending" as OpState])),
@@ -80,7 +83,9 @@ export function ProposalReview({
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const pending = proposal.ops.filter((op) => states[op.id] === "pending");
+  const stateOf = (op: ProposalOp): OpState =>
+    states[op.id] === "pending" && staleOpIds?.has(op.id) ? "stale" : states[op.id]!;
+  const pending = proposal.ops.filter((op) => stateOf(op) === "pending");
 
   const accept = async (opIds: string[]) => {
     setBusy(true);
@@ -114,7 +119,7 @@ export function ProposalReview({
   };
 
   const card = (op: ProposalOp) => {
-    const state = states[op.id]!;
+    const state = stateOf(op);
     const violations = op.kind === "updateSlide" ? (op.violations ?? []) : [];
     return (
       <article key={op.id} className={`op-card ${state}`} data-testid="op-card" data-state={state}>

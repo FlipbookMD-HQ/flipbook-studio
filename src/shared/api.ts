@@ -506,3 +506,15 @@ export const DraftKitRequestSchema = z.object({
   deckId: z.string().optional(),
 });
 export type DraftKitRequest = z.infer<typeof DraftKitRequestSchema>;
+
+// US-15: chat about the open deck.
+export const ChatRequestSchema = z.object({
+  deckId: z.string(),
+  /** null, or an ID the server forgot (a restart), starts a new session. */
+  sessionId: z.string().max(100).nullable(),
+  message: z.string().trim().min(1, "Write a message.").max(8000),
+  /** The slide open in the editor: its full text goes into the context. */
+  slideId: SlideIdSchema.optional(),
+});
+export type ChatRequest = z.infer<typeof ChatRequestSchema>;
+export const ChatDoneEventSchema = z.object({ sessionId: z.string() });

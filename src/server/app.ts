@@ -19,6 +19,7 @@ import {
   RewriteRequestSchema,
   GenerateDeckRequestSchema,
   DraftKitRequestSchema,
+  ChatRequestSchema,
   SaveAsRequestSchema,
   ApplyProposalRequestSchema,
   RenameGroupRequestSchema,
@@ -58,6 +59,7 @@ import { prepareRewrite, runRewrite } from "./ai/rewrite.js";
 import { GenerationRuns, prepareGenerate, runGenerate } from "./ai/generate.js";
 import { sseTask } from "./ai/sse.js";
 import { prepareDraftKit, runDraftKit } from "./ai/draft-kit.js";
+import { ChatSessionStore, runChat } from "./ai/chat.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -136,6 +138,7 @@ export function createApp(options: AppOptions) {
   const llmProvider = options.llmProvider ?? defaultProviderFactory;
   const proposals = new ProposalStore();
   const generations = new GenerationRuns();
+  const chats = new ChatSessionStore();
   /** The saved model and a provider for it, or 409 LLM_NOT_CONFIGURED (always before streaming). */
   const configuredLlm = async () => {
     const llm = (await settingsStore).current().llm;
@@ -306,6 +309,31 @@ export function createApp(options: AppOptions) {
     return sseTask(
       c.req.raw,
       (context) => runDraftKit(context, prepared, request, { provider, llm, store: proposals, log }),
+      { log, baseUrl: llm.baseUrl, model: llm.model },
+    );
+  });
+  // US-15: chat about a deck. One stream per deck; the session lives in memory only.
+  api.post("/ai/chat", async (c) => {
+    const request = ChatRequestSchema.parse(await jsonBody(c));
+    const { llm, provider } = await configuredLlm();
+    await findDeck(options.workspace, request.deckId);
+    const session = chats.open(request.deckId, request.sessionId);
+    chats.begin(request.deckId);
+    return sseTask(
+      c.req.raw,
+      async (context) => {
+        try {
+          return await runChat(context, options.workspace, request, session, {
+            provider,
+            llm,
+            sessions: chats,
+            store: proposals,
+            log,
+          });
+        } finally {
+          chats.end(request.deckId);
+        }
+      },
       { log, baseUrl: llm.baseUrl, model: llm.model },
     );
   });
