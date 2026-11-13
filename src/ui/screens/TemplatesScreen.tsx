@@ -2,6 +2,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiRequestError, getKit, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
+import { DraftKitButton } from "./DraftKitDialog";
 
 export const templatePath = (scope: "library" | "deck", name: string, deckId?: string) =>
   scope === "deck"
@@ -36,9 +37,12 @@ export function TemplatesScreen() {
     <Shell
       crumb="Templates"
       actions={
-        <Link className="button primary" to="/kits/templates/new">
-          New template
-        </Link>
+        <>
+          <DraftKitButton kind="template" />
+          <Link className="button primary" to="/kits/templates/new">
+            New template
+          </Link>
+        </>
       }
     >
       <h1>Templates</h1>

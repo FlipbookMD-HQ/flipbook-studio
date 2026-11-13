@@ -44,6 +44,8 @@ In the slide editor, **AI** rewrites the open slide (Shorten, Expand, Translate 
 
 **New deck → Generate with AI** writes a whole deck from a topic or pasted text with a media kit. Slides appear as they stream in; Studio then repairs the slides that break the kit's blueprint (Settings → Advanced → repair rounds) and opens the deck at the first slide that still fails. The deck is written in `.flipbook-studio-tmp/` inside your workspace and moved into place only at the end, so cancelling leaves nothing behind. Studio adds that folder to the workspace's `.gitignore` when the workspace is a git repository.
 
+**Draft with AI** (in Kits → Themes, Templates, Blueprints and Media kits) drafts a kit piece from a description. A theme, template or blueprint opens in its editor as an unsaved draft with a live preview; Save writes it like any other edit. A media kit shows its file, plus a file for each new theme it drafts, for review; Accept all writes them and opens the kit. Studio validates every draft with the same rules as `flipbook check` and caps each drafted file at 50 kB; output that fails is sent back to the model once, then shown as an error with Retry, and nothing is written.
+
 ### Review checklist for AI features
 
 - Every AI button is rendered through `<AiAction>` (`src/ui/ai.tsx`), so it is disabled, with a link to Settings, until a model is set up.

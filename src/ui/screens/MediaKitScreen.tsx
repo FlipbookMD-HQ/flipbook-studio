@@ -30,6 +30,7 @@ import { ChromeSection, OverviewSection, TemplatesSection, ThemesSection } from 
 import { CodeEditor } from "./MarkdownEditor";
 import { kitPath } from "./MediaKitsScreen";
 import { ErrorNotice, Shell } from "./Shell";
+import { DraftKitButton } from "./DraftKitDialog";
 
 const SECTIONS = ["Overview", "Themes", "Templates", "Blueprint", "Chrome", "Raw YAML"] as const;
 type SectionName = (typeof SECTIONS)[number];
@@ -277,6 +278,7 @@ export function MediaKitScreen() {
       }
       actions={
         <>
+          {creating ? <DraftKitButton kind="group" /> : null}
           {reason && reason !== "No changes to save." ? (
             <span className="muted" data-testid="save-reason">
               {reason}

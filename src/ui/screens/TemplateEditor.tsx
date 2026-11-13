@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
+import { parse as parseYaml } from "yaml";
 import type { ApiError, KitDoc } from "../../shared/api";
 import {
   LAYOUTS,
@@ -16,6 +17,7 @@ import { ApiRequestError, createKit, getKit, getWorkspace, previewKit, updateKit
 import { GridEditor } from "./GridEditor";
 import { ErrorNotice, Shell } from "./Shell";
 import { templatePath } from "./TemplatesScreen";
+import { DraftKitButton, kitDraftOf } from "./DraftKitDialog";
 
 const DEFAULT: TemplateFields = {
   column: 1,
@@ -95,6 +97,20 @@ export function TemplateEditor() {
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [saving, setSaving] = useState(false);
   const leaving = useRef(false);
+  const location = useLocation();
+  const draft = existing ? null : kitDraftOf(location);
+
+  // An AI draft (US-14) fills the new-template form, unsaved; each new draft replaces it.
+  useEffect(() => {
+    if (!draft) return;
+    const drafted = fieldsOf(parseYaml(draft.source));
+    if (!drafted) return;
+    leaving.current = false;
+    setName(draft.name);
+    setFields(drafted);
+    setOutcomes([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   useEffect(() => {
     if (!existing || !kit.data) return;
@@ -249,6 +265,8 @@ export function TemplateEditor() {
       }
       actions={
         <>
+          {!existing ? <DraftKitButton kind="template" /> : null}
+          {draft && dirty ? <span className="muted">Unsaved draft</span> : null}
           {reason && (existing ? dirty : true) ? (
             <span className="muted" data-testid="save-reason">
               {reason}
