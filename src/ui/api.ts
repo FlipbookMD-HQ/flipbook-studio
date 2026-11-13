@@ -35,6 +35,8 @@ import {
   ApplyProposalResponseSchema,
   type RewriteRequest,
   type Proposal,
+  type Violation,
+  type GenerateDeckRequest,
 } from "../shared/api";
 import { z } from "zod";
 
@@ -226,7 +228,9 @@ export type AiEvent =
   | { event: "token"; data: { text: string } }
   | { event: "notice"; data: { message: string } }
   | { event: "proposal"; data: Proposal }
-  | { event: "done"; data: { noChange?: boolean } & Record<string, unknown> }
+  | { event: "slide"; data: { index: number; draft: SlideDraft } }
+  | { event: "repair"; data: { round: number; violations: Violation[] } }
+  | { event: "done"; data: { noChange?: boolean; deckId?: string; violations?: Violation[] } }
   | { event: "failed"; data: { error: ApiError } };
 
 /**
@@ -293,3 +297,15 @@ export async function discardProposal(id: string): Promise<void> {
     headers: { [TOKEN_HEADER]: token() },
   });
 }
+
+export const generateDeck = (
+  request: GenerateDeckRequest,
+  onEvent: (event: AiEvent) => void,
+  signal: AbortSignal,
+) => streamAi("/api/ai/generate-deck", request, onEvent, signal);
+
+export const saveGeneratedDeck = (runId: string, name: string) =>
+  apiFetch(`/api/ai/generate-deck/${encodeURIComponent(runId)}/save-as`, z.object({ deckId: z.string() }), {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });

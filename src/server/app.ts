@@ -17,6 +17,8 @@ import {
   LlmTestRequestSchema,
   SettingsPatchSchema,
   RewriteRequestSchema,
+  GenerateDeckRequestSchema,
+  SaveAsRequestSchema,
   ApplyProposalRequestSchema,
   RenameGroupRequestSchema,
   KitQuerySchema,
@@ -52,6 +54,7 @@ import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
 import { ProposalStore, applyProposal } from "./ai/proposals.js";
 import { prepareRewrite, runRewrite } from "./ai/rewrite.js";
+import { GenerationRuns, prepareGenerate, runGenerate } from "./ai/generate.js";
 import { sseTask } from "./ai/sse.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -130,6 +133,7 @@ export function createApp(options: AppOptions) {
     : SettingsStore.open(configDir(), log);
   const llmProvider = options.llmProvider ?? defaultProviderFactory;
   const proposals = new ProposalStore();
+  const generations = new GenerationRuns();
   /** The saved model and a provider for it, or 409 LLM_NOT_CONFIGURED (always before streaming). */
   const configuredLlm = async () => {
     const llm = (await settingsStore).current().llm;
@@ -275,6 +279,22 @@ export function createApp(options: AppOptions) {
       (context) => runRewrite(context, prepared, request, { provider, llm, store: proposals, log }),
       { log, baseUrl: llm.baseUrl, model: llm.model },
     );
+  });
+  // US-13: generate a deck. Checks that can answer with plain JSON run before the stream opens.
+  api.post("/ai/generate-deck", async (c) => {
+    const request = GenerateDeckRequestSchema.parse(await jsonBody(c));
+    const { llm, provider } = await configuredLlm();
+    const prepared = await prepareGenerate(options.workspace, request);
+    return sseTask(
+      c.req.raw,
+      (context) =>
+        runGenerate(context, options.workspace, request, prepared, { provider, llm, runs: generations, log }),
+      { log, baseUrl: llm.baseUrl, model: llm.model },
+    );
+  });
+  api.post("/ai/generate-deck/:runId/save-as", async (c) => {
+    const { name } = SaveAsRequestSchema.parse(await jsonBody(c));
+    return c.json(await generations.saveAs(options.workspace, c.req.param("runId"), name), 201);
   });
   api.post("/proposals/:id/apply", async (c) => {
     const { opIds } = ApplyProposalRequestSchema.parse(await jsonBody(c));

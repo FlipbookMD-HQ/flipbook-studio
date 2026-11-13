@@ -468,3 +468,31 @@ export const RewriteRequestSchema = z.object({
   avoid: z.array(z.string().max(500)).max(20).optional(),
 });
 export type RewriteRequest = z.infer<typeof RewriteRequestSchema>;
+
+// US-13: generate a deck with AI.
+export const GENERATE_TEXT_LIMIT = 200_000;
+export const GenerateDeckRequestSchema = CreateDeckRequestSchema.extend({
+  /** A topic to write about, or source text to turn into slides (checked for size before streaming). */
+  source: z.union([
+    z.object({ topic: z.string().trim().min(1, "Describe the topic.").max(2000) }).strict(),
+    z.object({ text: z.string().trim().min(1, "Paste some text.") }).strict(),
+  ]),
+  language: z.string().trim().min(1).max(60).optional(),
+});
+export type GenerateDeckRequest = z.infer<typeof GenerateDeckRequestSchema>;
+export const SaveAsRequestSchema = z.object({
+  name: z.string().regex(DECK_NAME, "Use 1-60 lowercase letters, digits or dashes."),
+});
+
+/** The events of POST /api/ai/generate-deck, in order: slide…, repair…, then done or failed. */
+export const GenerateSlideEventSchema = z.object({
+  index: z.number().int().nonnegative(),
+  draft: SlideDraftSchema,
+});
+export const GenerateRepairEventSchema = z.object({
+  round: z.number().int().positive(),
+  violations: z.array(ViolationSchema),
+});
+export const GenerateNoticeEventSchema = z.object({ message: z.string() });
+export const GenerateDoneEventSchema = z.object({ deckId: z.string(), violations: z.array(ViolationSchema) });
+export const AiFailedEventSchema = z.object({ error: ApiErrorSchema });
