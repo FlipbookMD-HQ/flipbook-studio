@@ -168,6 +168,21 @@ describe("POST /api/ai/rewrite", () => {
     expect(op.violations).toEqual([expect.objectContaining({ code: "MAX_CHARS", source: SLIDE })]);
   });
 
+  it("carries a MAX_CHARS violation even when another slide is out of order", async () => {
+    const { rewrite, root } = await setup(
+      reply("# Cover\n\nOur product saves time, money, effort and much, much more."),
+    );
+    // A second cover after the body breaks the page order on slide 3, not on the rewritten slide.
+    await write(root, {
+      "deck/presentation.yml":
+        "title: Pitch\nslides:\n  - slides/01_cover.slide.md\n  - slides/02_body.slide.md\n  - slides/03_cover.slide.md\n",
+      "deck/slides/03_cover.slide.md": "# Again\n",
+    });
+    const events = await sseEvents(await rewrite({ kind: "expand" }));
+    const op = events.find((event) => event.event === "proposal")!.data.ops[0];
+    expect(op.violations).toEqual([expect.objectContaining({ code: "MAX_CHARS", source: SLIDE })]);
+  });
+
   it("passes the broken rules back on a retry", async () => {
     const { rewrite, fake } = await setup(reply("# Cover\n\nShort."));
     await sseEvents(await rewrite({ kind: "expand" }, { avoid: ["Slide is longer than 40 characters."] }));
