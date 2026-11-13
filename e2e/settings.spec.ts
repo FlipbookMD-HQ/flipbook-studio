@@ -37,7 +37,10 @@ const slidePage = () => `${studio.url}decks/${deckId}/slides/%230`;
 test("connect a model: list, test, save; AI buttons enable; settings survive a restart", async ({ page }) => {
   await page.goto(slidePage());
   await expect(aiButton(page)).toBeDisabled();
-  await page.getByRole("link", { name: "Set up a local model" }).click();
+  await page
+    .getByRole("region", { name: "Slide" })
+    .getByRole("link", { name: "Set up a local model" })
+    .click();
   await expect(page).toHaveURL(/\/settings$/);
 
   // The Ollama preset is the default; point it at the stub (a custom URL on another port).
