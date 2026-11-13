@@ -6,6 +6,8 @@ export async function startStudio(
   workspace: string,
   configDir: string,
   port: number,
+  /** The library folder (FLIPBOOK_HOME); defaults to fixtures/library. */
+  library = path.resolve("fixtures/library"),
 ): Promise<{ url: string; banner: string; child: ChildProcess }> {
   const child = spawn(
     process.execPath,
@@ -13,7 +15,7 @@ export async function startStudio(
     {
       env: {
         ...process.env,
-        FLIPBOOK_HOME: path.resolve("fixtures/library"),
+        FLIPBOOK_HOME: library,
         FLIPBOOK_STUDIO_CONFIG_DIR: configDir,
       },
     },

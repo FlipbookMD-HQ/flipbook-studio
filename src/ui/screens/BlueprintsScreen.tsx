@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
+import { DraftKitButton } from "./DraftKitDialog";
 
 export const blueprintPath = (scope: "library" | "deck", name: string) =>
   scope === "deck" ? `/kits/blueprints/deck/${name}` : `/kits/blueprints/library/${encodeURIComponent(name)}`;
@@ -26,9 +27,12 @@ export function BlueprintsScreen() {
     <Shell
       crumb="Blueprints"
       actions={
-        <Link className="button primary" to="/kits/blueprints/new">
-          New library blueprint
-        </Link>
+        <>
+          <DraftKitButton kind="blueprint" />
+          <Link className="button primary" to="/kits/blueprints/new">
+            New library blueprint
+          </Link>
+        </>
       }
     >
       <h1>Blueprints</h1>
