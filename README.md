@@ -46,6 +46,8 @@ In the slide editor, **AI** rewrites the open slide (Shorten, Expand, Translate 
 
 **Draft with AI** (in Kits → Themes, Templates, Blueprints and Media kits) drafts a kit piece from a description. A theme, template or blueprint opens in its editor as an unsaved draft with a live preview; Save writes it like any other edit. A media kit shows its file, plus a file for each new theme it drafts, for review; Accept all writes them and opens the kit. Studio validates every draft with the same rules as `flipbook check` and caps each drafted file at 50 kB; output that fails is sent back to the model once, then shown as an error with Retry, and nothing is written.
 
+**Chat** (under the slide editor) answers questions about the open deck: its slides, media kit, blueprint and current rule problems. When you ask for a change ("split slide 3 into two"), the reply carries edits that you accept or reject one by one; an edit whose slide changed after the reply is marked stale and can't be applied. One reply runs per deck at a time, and the history lasts until Studio stops.
+
 ### Review checklist for AI features
 
 - Every AI button is rendered through `<AiAction>` (`src/ui/ai.tsx`), so it is disabled, with a link to Settings, until a model is set up.

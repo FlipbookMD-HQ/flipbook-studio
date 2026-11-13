@@ -10,6 +10,7 @@ import { SlideViolations, ViolationsPanel, violationsFor } from "./Violations";
 import { ErrorNotice, Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
 import { AiPanel } from "./AiPanel";
+import { ChatPanel } from "./ChatPanel";
 
 const PREVIEW_DELAY_MS = 250;
 
@@ -327,6 +328,18 @@ export function SlideEditor() {
           {previewError && !templateError ? <ErrorNotice error={previewError} /> : null}
         </section>
       </div>
+
+      <ChatPanel
+        deck={data}
+        slideId={slideId}
+        onApplied={(result) => {
+          if (!result.applied.length) return;
+          // Reload the slide list, violations and hashes. Unsaved edits stay: if the chat changed
+          // this slide too, saving them shows the usual conflict dialog.
+          if (!dirty && !saving) loadedFor.current = null;
+          void queryClient.invalidateQueries({ queryKey: ["deck", id] });
+        }}
+      />
 
       {conflict ? (
         <ConflictDialog
