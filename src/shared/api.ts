@@ -496,3 +496,13 @@ export const GenerateRepairEventSchema = z.object({
 export const GenerateNoticeEventSchema = z.object({ message: z.string() });
 export const GenerateDoneEventSchema = z.object({ deckId: z.string(), violations: z.array(ViolationSchema) });
 export const AiFailedEventSchema = z.object({ error: ApiErrorSchema });
+
+// US-14: draft a kit piece with AI.
+export const DraftKitRequestSchema = z.object({
+  kind: KitKindSchema,
+  name: z.string().trim().min(1, "Name it.").max(60),
+  description: z.string().trim().min(1, "Describe what you want.").max(4000),
+  /** Draft the deck's own presentation.css or blueprint.yml instead of a library kit. */
+  deckId: z.string().optional(),
+});
+export type DraftKitRequest = z.infer<typeof DraftKitRequestSchema>;

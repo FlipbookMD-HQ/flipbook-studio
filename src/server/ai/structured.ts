@@ -12,15 +12,27 @@ export function stripFence(text: string): string {
   return (match ? match[1]! : trimmed).trim();
 }
 
+/** Thrown by a custom `parse` to say why the answer can't be read; the message goes back to the model. */
+export class OutputProblem extends Error {}
+
 /** Why `text` isn't a valid answer, or the parsed value. */
-function check<T>(text: string, schema: z.ZodType<T>): { value: T } | { problem: string } {
+function check<T>(
+  text: string,
+  schema: z.ZodType<T>,
+  parse: (body: string) => unknown = JSON.parse,
+): { value: T } | { problem: string } {
   const body = stripFence(text);
   if (!body) return { problem: "The answer was empty." };
   let json: unknown;
   try {
-    json = JSON.parse(body);
+    json = parse(body);
   } catch (error) {
-    return { problem: `The answer wasn't valid JSON (${(error as Error).message}).` };
+    return {
+      problem:
+        error instanceof OutputProblem
+          ? error.message
+          : `The answer wasn't valid JSON (${(error as Error).message}).`,
+    };
   }
   const result = schema.safeParse(json);
   if (result.success) return { value: result.data };
@@ -40,6 +52,10 @@ export interface StructuredCall<T> {
   signal: AbortSignal;
   onToken?: (text: string) => void;
   log?: (line: string) => void;
+  /** Reads the reply body instead of JSON.parse; throw OutputProblem to explain a failure. */
+  parse?: (body: string) => unknown;
+  /** Checks a schema-valid value further: a problem string is fed back for the retry like a schema error. */
+  accept?: (value: T) => Promise<string | null> | string | null;
 }
 
 /**
@@ -66,7 +82,11 @@ export async function structuredCall<T>(call: StructuredCall<T>): Promise<T> {
       }
     }
     if (aiDebug()) log(`ai reply (attempt ${attempt}): ${raw}`);
-    const result = check(raw, call.schema);
+    let result = check(raw, call.schema, call.parse);
+    if ("value" in result && call.accept) {
+      const problem = await call.accept(result.value);
+      if (problem) result = { problem };
+    }
     if ("value" in result) return result.value;
     if (attempt === 2) {
       throw new StudioError(502, "LLM_BAD_OUTPUT", `The model's answer wasn't usable. ${result.problem}`, {
@@ -78,7 +98,7 @@ export async function structuredCall<T>(call: StructuredCall<T>): Promise<T> {
       { role: "assistant", content: raw },
       {
         role: "user",
-        content: `${result.problem} Reply again with only the JSON object, matching the schema exactly. No code fence, no comments.`,
+        content: `${result.problem} Reply again with only the JSON object, matching the schema exactly and fixing that problem. No code fence, no comments.`,
       },
     ];
   }
