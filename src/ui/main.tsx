@@ -26,6 +26,7 @@ const router = createBrowserRouter([
   { path: "/decks/:id", element: <DeckScreen /> },
   { path: "/decks/:id/slides/:slideId", element: <SlideEditor /> },
   { path: "/kits/themes", element: <ThemesScreen /> },
+  { path: "/kits/themes/new", element: <ThemeEditor /> },
   { path: "/kits/themes/:scope/:name", element: <ThemeEditor /> },
   { path: "/kits/templates", element: <TemplatesScreen /> },
   { path: "/kits/templates/new", element: <TemplateEditor /> },

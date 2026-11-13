@@ -18,6 +18,7 @@ import {
   SettingsPatchSchema,
   RewriteRequestSchema,
   GenerateDeckRequestSchema,
+  DraftKitRequestSchema,
   SaveAsRequestSchema,
   ApplyProposalRequestSchema,
   RenameGroupRequestSchema,
@@ -56,6 +57,7 @@ import { ProposalStore, applyProposal } from "./ai/proposals.js";
 import { prepareRewrite, runRewrite } from "./ai/rewrite.js";
 import { GenerationRuns, prepareGenerate, runGenerate } from "./ai/generate.js";
 import { sseTask } from "./ai/sse.js";
+import { prepareDraftKit, runDraftKit } from "./ai/draft-kit.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -295,6 +297,17 @@ export function createApp(options: AppOptions) {
   api.post("/ai/generate-deck/:runId/save-as", async (c) => {
     const { name } = SaveAsRequestSchema.parse(await jsonBody(c));
     return c.json(await generations.saveAs(options.workspace, c.req.param("runId"), name), 201);
+  });
+  // US-14: draft a kit piece. Name checks answer with plain JSON before the stream opens.
+  api.post("/ai/draft-kit", async (c) => {
+    const request = DraftKitRequestSchema.parse(await jsonBody(c));
+    const { llm, provider } = await configuredLlm();
+    const prepared = await prepareDraftKit(options.workspace, options.library, request);
+    return sseTask(
+      c.req.raw,
+      (context) => runDraftKit(context, prepared, request, { provider, llm, store: proposals, log }),
+      { log, baseUrl: llm.baseUrl, model: llm.model },
+    );
   });
   api.post("/proposals/:id/apply", async (c) => {
     const { opIds } = ApplyProposalRequestSchema.parse(await jsonBody(c));

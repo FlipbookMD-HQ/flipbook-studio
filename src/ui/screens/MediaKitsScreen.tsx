@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
+import { DraftKitButton } from "./DraftKitDialog";
 
 export const kitPath = (scope: "library" | "builtin", name: string) =>
   `/kits/media/${scope}/${encodeURIComponent(name)}`;
@@ -27,9 +28,12 @@ export function MediaKitsScreen() {
     <Shell
       crumb="Media kits"
       actions={
-        <Link className="button primary" to="/kits/media/new">
-          New media kit
-        </Link>
+        <>
+          <DraftKitButton kind="group" />
+          <Link className="button primary" to="/kits/media/new">
+            New media kit
+          </Link>
+        </>
       }
     >
       <h1>Media kits</h1>

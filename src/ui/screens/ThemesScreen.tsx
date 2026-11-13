@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
+import { DraftKitButton } from "./DraftKitDialog";
 
 export const themePath = (scope: string, name: string) => `/kits/themes/${scope}/${encodeURIComponent(name)}`;
 
@@ -47,7 +48,7 @@ export function ThemesScreen() {
       })),
   ];
   return (
-    <Shell crumb="Themes">
+    <Shell crumb="Themes" actions={<DraftKitButton kind="theme" />}>
       <h1>Themes</h1>
       <p className="muted">
         Library themes are used by decks with <code>style: &lt;name&gt;</code>. Built-in themes are copied

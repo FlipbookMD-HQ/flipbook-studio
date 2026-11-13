@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { ApiError, KitDoc, KitScope } from "../../shared/api";
 import {
   cssWarning,
@@ -14,6 +14,7 @@ import { ApiRequestError, createKit, getKit, previewKit, updateKit } from "../ap
 import { CodeEditor } from "./MarkdownEditor";
 import { ErrorNotice, Shell } from "./Shell";
 import { themePath } from "./ThemesScreen";
+import { DraftKitButton, kitDraftOf } from "./DraftKitDialog";
 
 const FONTS = [
   "Inter, system-ui, sans-serif",
@@ -116,9 +117,16 @@ function SaveAsCopy({
   );
 }
 
-/** Kits → Themes → one theme: Tokens and Raw CSS tabs over one source string, with live samples. */
+/**
+ * Kits → Themes → one theme: Tokens and Raw CSS tabs over one source string, with live samples.
+ * At /kits/themes/new it holds an AI draft (US-14), unsaved until Save creates the library theme.
+ */
 export function ThemeEditor() {
-  const { scope: rawScope = "library", name = "" } = useParams();
+  const params = useParams();
+  const creating = params.scope == null;
+  const { scope: rawScope = "library", name = "" } = params;
+  const location = useLocation();
+  const draft = creating ? kitDraftOf(location) : null;
   const scope = (["library", "deck", "builtin"].includes(rawScope) ? rawScope : "library") as KitScope;
   // Deck themes are addressed by deck ID.
   const deckId = scope === "deck" ? name : undefined;
@@ -127,7 +135,11 @@ export function ThemeEditor() {
   const kit = useQuery({
     queryKey: ["kit", "theme", scope, name],
     queryFn: () => getKit("theme", scope === "deck" ? "presentation" : name, scope, deckId),
+    enabled: !creating,
   });
+  const [newName, setNewName] = useState("");
+  // Set just before navigating to a copy that holds the changes, so the leave guard lets it through.
+  const leaving = useRef(false);
   const [source, setSource] = useState<string | null>(null);
   const [baseHash, setBaseHash] = useState<string | null>(null);
   const [tab, setTab] = useState<"tokens" | "raw">("tokens");
@@ -145,6 +157,16 @@ export function ThemeEditor() {
       setSaved(kit.data.source);
     }
   }, [kit.data]);
+  // Each new draft (a new navigation) replaces the editor's content.
+  useEffect(() => {
+    if (!draft) return;
+    leaving.current = false;
+    setSource(draft.source);
+    setNewName(draft.name);
+    setSaved(null);
+    setSaveError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   const warning = source == null ? null : cssWarning(source);
   // Debounced preview, latest request wins; a CSS warning keeps the last good preview.
@@ -172,16 +194,22 @@ export function ThemeEditor() {
     };
   }, [source, warning, deckId, scope]);
 
-  const dirty = source != null && saved != null && source !== saved;
-  // Set just before navigating to a copy that holds the changes, so the leave guard lets it through.
-  const leaving = useRef(false);
+  const dirty = source != null && (creating || (saved != null && source !== saved));
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       !leaving.current && dirty && currentLocation.pathname !== nextLocation.pathname,
   );
   const tokens = useMemo(() => (source == null ? [] : parseTokens(source)), [source]);
 
-  if (kit.isPending || source == null) return <Shell crumb="Themes">Loading theme…</Shell>;
+  if (creating && !draft) {
+    return (
+      <Shell crumb={<Link to="/kits/themes">Themes</Link>} actions={<DraftKitButton kind="theme" />}>
+        <h1>New theme</h1>
+        <p>Draft a theme with AI, or open a theme and save it as a copy.</p>
+      </Shell>
+    );
+  }
+  if ((!creating && kit.isPending) || source == null) return <Shell crumb="Themes">Loading theme…</Shell>;
   if (kit.isError) {
     return (
       <Shell crumb={<Link to="/kits/themes">Themes</Link>}>
@@ -189,15 +217,37 @@ export function ThemeEditor() {
       </Shell>
     );
   }
-  const builtIn = kit.data.builtIn;
-  const title = scope === "deck" ? "presentation.css" : name;
+  const builtIn = kit.data?.builtIn ?? false;
+  const usedBy = kit.data?.usedBy ?? [];
+  const title = creating ? "New theme" : scope === "deck" ? "presentation.css" : name;
+  const nameProblem = creating && !/^[a-z0-9-]{1,60}$/.test(newName);
 
   const save = async () => {
     if (builtIn) return setCopying(true);
+    if (creating) {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const doc = await createKit("theme", { name: newName, scope: "library", source });
+        leaving.current = true;
+        void queryClient.invalidateQueries({ queryKey: ["workspace"] });
+        navigate(themePath("library", doc.ref.name));
+      } catch (reason) {
+        setSaveError(asApiError(reason));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      const doc = await updateKit("theme", kit.data.ref.name, { scope, deckId, baseHash: baseHash!, source });
+      const doc = await updateKit("theme", kit.data!.ref.name, {
+        scope,
+        deckId,
+        baseHash: baseHash!,
+        source,
+      });
       setBaseHash(doc.hash);
       setSaved(doc.source);
       queryClient.setQueryData(["kit", "theme", scope, name], doc);
@@ -219,8 +269,9 @@ export function ThemeEditor() {
       actions={
         <>
           {builtIn ? <span className="badge badge-built-in">Built-in — save as copy</span> : null}
-          {dirty ? <span className="muted">Unsaved changes</span> : null}
-          {!builtIn ? (
+          {creating ? <DraftKitButton kind="theme" /> : null}
+          {dirty ? <span className="muted">{creating ? "Unsaved draft" : "Unsaved changes"}</span> : null}
+          {!builtIn && !creating ? (
             <button type="button" onClick={() => setCopying(true)}>
               Save as copy…
             </button>
@@ -229,7 +280,7 @@ export function ThemeEditor() {
             type="button"
             className="primary"
             onClick={() => void save()}
-            disabled={saving || (!dirty && !builtIn)}
+            disabled={saving || (!dirty && !builtIn) || nameProblem}
           >
             {builtIn ? "Save as copy…" : saving ? "Saving…" : "Save"}
           </button>
@@ -237,10 +288,22 @@ export function ThemeEditor() {
       }
     >
       <h1>{title}</h1>
-      {kit.data.usedBy.length ? (
+      {usedBy.length ? (
         <p className="muted">
-          Used by {kit.data.usedBy.length} deck{kit.data.usedBy.length === 1 ? "" : "s"} in this workspace.
+          Used by {usedBy.length} deck{usedBy.length === 1 ? "" : "s"} in this workspace.
         </p>
+      ) : null}
+      {creating ? (
+        <label className="field">
+          <span>Name of the library theme</span>
+          <input
+            value={newName}
+            onChange={(event) => setNewName(event.target.value.trim())}
+            aria-invalid={nameProblem ? "true" : undefined}
+            pattern="[a-z0-9-]{1,60}"
+            title="Lowercase letters, digits and dashes"
+          />
+        </label>
       ) : null}
       {saveError ? <ErrorNotice error={saveError} /> : null}
       <div className="theme-editor">

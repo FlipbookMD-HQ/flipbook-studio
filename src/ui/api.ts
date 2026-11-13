@@ -36,6 +36,7 @@ import {
   type RewriteRequest,
   type Proposal,
   type Violation,
+  type DraftKitRequest,
   type GenerateDeckRequest,
 } from "../shared/api";
 import { z } from "zod";
@@ -303,6 +304,9 @@ export const generateDeck = (
   onEvent: (event: AiEvent) => void,
   signal: AbortSignal,
 ) => streamAi("/api/ai/generate-deck", request, onEvent, signal);
+
+export const draftKit = (request: DraftKitRequest, onEvent: (event: AiEvent) => void, signal: AbortSignal) =>
+  streamAi("/api/ai/draft-kit", request, onEvent, signal);
 
 export const saveGeneratedDeck = (runId: string, name: string) =>
   apiFetch(`/api/ai/generate-deck/${encodeURIComponent(runId)}/save-as`, z.object({ deckId: z.string() }), {

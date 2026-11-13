@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import { parse } from "yaml";
 import type { ApiError, Violation } from "../../shared/api";
 import {
@@ -15,6 +15,7 @@ import {
 import { ApiRequestError, createKit, getDeck, getKit, getWorkspace, previewKit, updateKit } from "../api";
 import { BlueprintEditor } from "./BlueprintEditor";
 import { blueprintPath } from "./BlueprintsScreen";
+import { DraftKitButton, kitDraftOf } from "./DraftKitDialog";
 import { CodeEditor } from "./MarkdownEditor";
 import { ErrorNotice, Shell } from "./Shell";
 
@@ -66,13 +67,25 @@ export function BlueprintScreen() {
   const [saveError, setSaveError] = useState<ApiError | null>(null);
   const [saving, setSaving] = useState(false);
   const leaving = useRef(false);
+  const location = useLocation();
+  const draft = creating ? kitDraftOf(location) : null;
+
+  // An AI draft (US-14) opens unsaved; each new draft replaces the editor's content.
+  useEffect(() => {
+    if (!draft) return;
+    leaving.current = false;
+    setSource(draft.source);
+    if (scope === "library") setNewName(draft.name);
+    setSaveError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, creating]);
 
   useEffect(() => {
     if (kit.data) {
       leaving.current = false;
       setSource(kit.data.source);
       setSaved({ source: kit.data.source, hash: kit.data.hash });
-    } else if (creating && source == null) {
+    } else if (creating && source == null && !draft) {
       setSource(blueprintYaml(STARTER));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,7 +129,10 @@ export function BlueprintScreen() {
   const dirty = source != null && (creating ? true : source !== saved?.source);
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      !leaving.current && dirty && !creating && currentLocation.pathname !== nextLocation.pathname,
+      !leaving.current &&
+      dirty &&
+      (!creating || Boolean(draft)) &&
+      currentLocation.pathname !== nextLocation.pathname,
   );
 
   if (kit.isPending && !creating) return <Shell crumb="Blueprints">Loading blueprint…</Shell>;
@@ -196,6 +212,8 @@ export function BlueprintScreen() {
       }
       actions={
         <>
+          {creating ? <DraftKitButton kind="blueprint" deckId={routeDeck} /> : null}
+          {draft ? <span className="muted">Unsaved draft</span> : null}
           {reason && reason !== "No changes to save." ? (
             <span className="muted" data-testid="save-reason">
               {reason}
