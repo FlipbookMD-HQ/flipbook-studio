@@ -1,4 +1,6 @@
 import {
+  HistorySchema,
+  UndoResponseSchema,
   DeckAssetsResponseSchema,
   UploadAssetResponseSchema,
   type CreateDeckRequest,
@@ -43,6 +45,7 @@ import {
   type GenerateDeckRequest,
 } from "../shared/api";
 import { z } from "zod";
+import { DECK_WRITTEN, isDeckWrite } from "./undo";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -75,6 +78,9 @@ export async function apiFetch<T>(url: string, schema: z.ZodType<T>, init: Reque
         : { code: "INTERNAL", message: `Request failed with ${response.status}.` },
     );
   }
+  // US-17: any deck write may add an undo step.
+  if (isDeckWrite(init.method ?? "GET", url) && typeof window !== "undefined")
+    window.dispatchEvent(new Event(DECK_WRITTEN));
   return schema.parse(body);
 }
 
@@ -346,3 +352,9 @@ export const deleteAsset = (deckId: string, assetPath: string, force = false) =>
 /** The URL an <img> shows a deck image from (Host-checked, no token needed). */
 export const assetUrl = (deckId: string, assetPath: string) =>
   `/api/decks/${encodeURIComponent(deckId)}/files/${assetPath.split("/").map(encodeURIComponent).join("/")}`;
+
+// US-17: undo and redo.
+export const getHistory = (deckId: string) =>
+  apiFetch(`/api/decks/${encodeURIComponent(deckId)}/history`, HistorySchema);
+export const undoDeck = (deckId: string, direction: "undo" | "redo") =>
+  apiFetch(`/api/decks/${encodeURIComponent(deckId)}/${direction}`, UndoResponseSchema, { method: "POST" });

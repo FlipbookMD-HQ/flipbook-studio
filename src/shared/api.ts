@@ -40,6 +40,9 @@ export const ERROR_CODES = [
   "ASSET_CONTENT_MISMATCH",
   "ASSET_IN_USE",
   "ASSET_NOT_FOUND",
+  "UNDO_CONFLICT",
+  "NOTHING_TO_UNDO",
+  "NOTHING_TO_REDO",
   "INTERNAL",
 ] as const;
 
@@ -186,6 +189,12 @@ export const AddSlideRequestSchema = z.object({
 export const AddSlideResponseSchema = StructureResponseSchema.extend({ slide: SlideDocSchema });
 export const OrderRequestSchema = z.object({ baseHash: Hash, slideIds: z.array(z.string()).max(1000) });
 export const DeleteSlideQuerySchema = z.object({ baseHash: Hash });
+
+// US-17: undo and redo (tech-spec D21). The labels of the next undo and redo, or null.
+export const HistorySchema = z.object({ undo: z.string().nullable(), redo: z.string().nullable() });
+export type History = z.infer<typeof HistorySchema>;
+export const UndoResponseSchema = StructureResponseSchema.extend({ history: HistorySchema });
+export type UndoResponse = z.infer<typeof UndoResponseSchema>;
 
 // US-16: deck images (tech-spec D18-D20).
 export const ASSET_MAX_BYTES = 8 * 1024 * 1024;

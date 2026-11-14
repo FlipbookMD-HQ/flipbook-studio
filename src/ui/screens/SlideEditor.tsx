@@ -222,7 +222,23 @@ export function SlideEditor() {
           <Link to={`/decks/${id}`}>{data.title}</Link> · slide {slide.index + 1}
         </>
       }
-      actions={<DeckActions deckId={id} slideIndex={slide.index} />}
+      actions={
+        <DeckActions
+          deckId={id}
+          slideIndex={slide.index}
+          undoBlocked={dirty || saving ? "Save or discard your edits first" : null}
+          onUndo={(result) => {
+            // Reload the open slide; if the undo removed it, open the slide now at its place.
+            loadedFor.current = null;
+            if (!result.slides.some((item) => item.id === slideId)) {
+              const next = result.slides[Math.min(slide.index, result.slides.length - 1)];
+              navigate(next ? `/decks/${id}/slides/${encodeURIComponent(next.id)}` : `/decks/${id}`, {
+                replace: true,
+              });
+            }
+          }}
+        />
+      }
     >
       <ViolationsPanel
         deckId={id}
