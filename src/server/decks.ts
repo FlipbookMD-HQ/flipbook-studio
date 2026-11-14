@@ -264,7 +264,17 @@ const STRUCTURE_CONFLICT = "The deck changed on disk since you opened it.";
 const structureFile = (deck: DeckEntry) =>
   deck.kind === "folder" ? "presentation.yml" : path.basename(deck.absolute);
 
-async function structureResult(deck: DeckEntry, id: string) {
+/** "<verb> <n>" for a slide (its 1-based position), or just the verb when it can't be found. */
+export async function slideLabel(deck: DeckEntry, slideId: string, verb: string): Promise<string> {
+  try {
+    const { presentation } = await loadDeck(deck);
+    return `${verb} ${slideIndex(deck, presentation, slideId) + 1}`;
+  } catch {
+    return verb;
+  }
+}
+
+export async function structureResult(deck: DeckEntry, id: string) {
   const loaded = await loadDeck(deck);
   return {
     presentation: loaded.presentation,

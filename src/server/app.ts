@@ -37,6 +37,7 @@ import {
 } from "../shared/api.js";
 import { deckAssets, deleteAsset, uploadAsset } from "./assets.js";
 import { StudioError } from "./errors.js";
+import { DeckJournal } from "./journal.js";
 import { checkApiRequest, checkHost } from "./guard.js";
 import { coreExports, exportsInfo, startExport, type ExportServices } from "./exports.js";
 import { JobRegistry } from "./jobs.js";
@@ -54,6 +55,8 @@ import {
   orderSlides,
   previewSlide,
   saveSlide,
+  slideLabel,
+  structureResult,
 } from "./decks.js";
 import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
@@ -144,6 +147,7 @@ export function createApp(options: AppOptions) {
   const proposals = new ProposalStore();
   const generations = new GenerationRuns();
   const chats = new ChatSessionStore();
+  const journal = new DeckJournal();
   /** The saved model and a provider for it, or 409 LLM_NOT_CONFIGURED (always before streaming). */
   const configuredLlm = async () => {
     const llm = (await settingsStore).current().llm;
@@ -228,34 +232,83 @@ export function createApp(options: AppOptions) {
   });
   api.post("/decks/:id/slides", async (c) => {
     const { baseHash, afterSlideId, draft } = AddSlideRequestSchema.parse(await jsonBody(c));
-    return c.json(await addSlide(options.workspace, c.req.param("id"), afterSlideId, baseHash, draft), 201);
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    const added = await journal.journaled(
+      deck,
+      (result) => (result ? `Add slide ${result.slide.index + 1}` : "Add slide"),
+      () => addSlide(options.workspace, c.req.param("id"), afterSlideId, baseHash, draft),
+    );
+    return c.json(added, 201);
   });
   api.delete("/decks/:id/slides/:slideId{.+}", async (c) => {
     const { baseHash } = DeleteSlideQuerySchema.parse({ baseHash: c.req.query("baseHash") });
-    return c.json(await deleteSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash));
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    const label = await slideLabel(deck, c.req.param("slideId"), "Delete slide");
+    return c.json(
+      await journal.journaled(
+        deck,
+        () => label,
+        () => deleteSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash),
+      ),
+    );
   });
+  // US-17: undo and redo.
+  api.get("/decks/:id/history", async (c) =>
+    c.json(journal.history(await findDeck(options.workspace, c.req.param("id")))),
+  );
+  for (const direction of ["undo", "redo"] as const) {
+    api.post(`/decks/:id/${direction}`, async (c) => {
+      const deck = await findDeck(options.workspace, c.req.param("id"));
+      const history = await journal[direction](deck);
+      const { slides, hashes, violations } = await structureResult(deck, c.req.param("id"));
+      return c.json({ slides, hashes, violations, history });
+    });
+  }
   // US-16: deck images.
   api.get("/decks/:id/assets", async (c) => c.json(await deckAssets(options.workspace, c.req.param("id"))));
   api.post("/decks/:id/assets", async (c) => {
     const body = await c.req.parseBody().catch(() => {
       throw new StudioError(422, "VALIDATION_FAILED", "Send the image as multipart/form-data.");
     });
-    return c.json(await uploadAsset(options.workspace, c.req.param("id"), body.file), 201);
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    const uploaded = await journal.journaled(
+      deck,
+      (result) => `Upload ${result?.asset.path.replace(/^assets\//, "") ?? "image"}`,
+      () => uploadAsset(options.workspace, c.req.param("id"), body.file),
+    );
+    return c.json(uploaded, 201);
   });
   api.delete("/decks/:id/assets/:path{.+}", async (c) => {
     const { force } = DeleteAssetQuerySchema.parse({ force: c.req.query("force") });
-    await deleteAsset(options.workspace, c.req.param("id"), `assets/${c.req.param("path")}`, force === "1");
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    await journal.journaled(
+      deck,
+      () => `Delete image ${c.req.param("path")}`,
+      () => deleteAsset(options.workspace, c.req.param("id"), `assets/${c.req.param("path")}`, force === "1"),
+    );
     return c.body(null, 204);
   });
   api.put("/decks/:id/order", async (c) => {
     const { baseHash, slideIds } = OrderRequestSchema.parse(await jsonBody(c));
-    return c.json(await orderSlides(options.workspace, c.req.param("id"), slideIds, baseHash));
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    return c.json(
+      await journal.journaled(
+        deck,
+        () => "Reorder slides",
+        () => orderSlides(options.workspace, c.req.param("id"), slideIds, baseHash),
+      ),
+    );
   });
   // Folder slide IDs contain slashes ("slides/01.slide.md"); the client percent-encodes them.
   api.put("/decks/:id/slides/:slideId{.+}", async (c) => {
     const { baseHash, draft } = SaveSlideRequestSchema.parse(await jsonBody(c));
+    const deck = await findDeck(options.workspace, c.req.param("id"));
     return c.json(
-      await saveSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash, draft),
+      await journal.journaled(
+        deck,
+        (result) => (result ? `Edit slide ${result.slide.index + 1}` : "Edit slide"),
+        () => saveSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash, draft),
+      ),
     );
   });
   api.post("/decks", async (c) => {
@@ -371,7 +424,12 @@ export function createApp(options: AppOptions) {
   });
   api.post("/proposals/:id/apply", async (c) => {
     const { opIds } = ApplyProposalRequestSchema.parse(await jsonBody(c));
-    return c.json(await applyProposal(options.workspace, proposals, c.req.param("id"), opIds));
+    const stored = proposals.get(c.req.param("id"));
+    const apply = () => applyProposal(options.workspace, proposals, c.req.param("id"), opIds);
+    // Kit-only proposals (no deck) change the library, which has no undo (US-17 scope).
+    if (!stored.deckId) return c.json(await apply());
+    const deck = await findDeck(options.workspace, stored.deckId);
+    return c.json(await journal.journaled(deck, () => `AI: ${stored.summary}`, apply));
   });
   api.delete("/proposals/:id", (c) => {
     proposals.delete(c.req.param("id"));
