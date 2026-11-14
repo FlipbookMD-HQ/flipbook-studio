@@ -16,7 +16,9 @@ describe("image text edits", () => {
     expect(imageLine("Team photo", "assets/team-photo.png")).toBe("![Team photo](assets/team-photo.png)");
     expect(imageTarget("assets/n ote (1).webp")).toBe("assets/n%20ote%20%281%29.webp");
     expect(cleanAlt(" a ] [b]\\\n c ")).toBe("a b c");
-    expect(imageLine("x](javascript:alert(1)", "assets/a.png")).toBe("![x(javascript:alert(1)](assets/a.png)");
+    expect(imageLine("x](javascript:alert(1)", "assets/a.png")).toBe(
+      "![x(javascript:alert(1)](assets/a.png)",
+    );
     expect(altFromPath("assets/team_photo-2.png")).toBe("team photo 2");
     expect(altFromPath("assets/.png")).toBe("image");
   });
