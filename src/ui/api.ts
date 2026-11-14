@@ -1,4 +1,6 @@
 import {
+  DeckAssetsResponseSchema,
+  UploadAssetResponseSchema,
   type CreateDeckRequest,
   DeckDetailSchema,
   AddSlideResponseSchema,
@@ -59,9 +61,11 @@ function token(): string {
 export async function apiFetch<T>(url: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set(TOKEN_HEADER, token());
-  if (init.body != null && !headers.has("content-type")) headers.set("content-type", "application/json");
+  // A FormData body sets its own multipart content type (with the boundary).
+  if (init.body != null && !(init.body instanceof FormData) && !headers.has("content-type"))
+    headers.set("content-type", "application/json");
   const response = await fetch(url, { ...init, headers });
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = response.status === 204 ? undefined : await response.json().catch(() => null);
   if (!response.ok) {
     const envelope = ErrorEnvelopeSchema.safeParse(body);
     throw new ApiRequestError(
@@ -320,3 +324,25 @@ export const saveGeneratedDeck = (runId: string, name: string) =>
     method: "POST",
     body: JSON.stringify({ name }),
   });
+
+// US-16: deck images.
+const assetsUrl = (deckId: string) => `/api/decks/${encodeURIComponent(deckId)}/assets`;
+export const listAssets = (deckId: string) => apiFetch(assetsUrl(deckId), DeckAssetsResponseSchema);
+export const uploadAsset = (deckId: string, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(assetsUrl(deckId), UploadAssetResponseSchema, { method: "POST", body: form });
+};
+export const deleteAsset = (deckId: string, assetPath: string, force = false) =>
+  apiFetch(
+    `${assetsUrl(deckId)}/${assetPath
+      .replace(/^assets\//, "")
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/")}${force ? "?force=1" : ""}`,
+    z.undefined(),
+    { method: "DELETE" },
+  );
+/** The URL an <img> shows a deck image from (Host-checked, no token needed). */
+export const assetUrl = (deckId: string, assetPath: string) =>
+  `/api/decks/${encodeURIComponent(deckId)}/files/${assetPath.split("/").map(encodeURIComponent).join("/")}`;

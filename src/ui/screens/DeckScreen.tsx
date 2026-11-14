@@ -4,6 +4,7 @@ import { ViolationBadge, ViolationsPanel, violationsFor } from "./Violations";
 import { ApiRequestError, getDeck } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
+import { ImagesPanel } from "./ImagesPanel";
 
 export function DeckScreen() {
   const { id = "" } = useParams();
@@ -53,6 +54,8 @@ export function DeckScreen() {
           </li>
         ))}
       </ol>
+      <h2>Images</h2>
+      <ImagesPanel deckId={deck.data.id} mode="manage" />
     </Shell>
   );
 }
