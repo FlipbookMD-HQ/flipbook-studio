@@ -1349,3 +1349,15 @@ fieldset.plain[hidden] {
   justify-content: space-between;
   gap: 0.5rem;
 }
+
+/* US-17: undo and redo */
+.undo-controls {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 0.5rem;
+}
+.undo-blocked {
+  font-size: 0.8rem;
+}
