@@ -24,6 +24,14 @@ Exit codes: 0 stopped with Ctrl+C · 1 usage error · 2 workspace missing or not
 
 The HTTP API under `/api` is internal to Studio and is not a public, stable API.
 
+## Images
+
+A deck's images live in its `assets/` folder (for a single-file deck, the `assets/` folder next to it, shared with the other single-file decks there).
+
+- **Deck screen → Images:** upload PNG, JPEG, GIF, WebP or SVG files of up to 8 MB. A file whose contents don't match its extension is refused. Names become lowercase kebab-case, and a taken name gets `-2`, `-3` and so on; nothing is overwritten. Each image shows its size, dimensions and the slides that use it. Deleting a used image lists those slides and asks first.
+- **Slide editor → Insert image:** pick or upload an image, write its alt text, then **Insert** it at the cursor or **Replace image** to swap the slide's first image.
+- **Drop or paste** an image into the Markdown editor to upload it and insert it where it lands.
+
 ## Develop
 
 ```sh

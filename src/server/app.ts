@@ -27,12 +27,15 @@ import {
   UpdateKitRequestSchema,
   PresentRequestSchema,
   type JobEvent,
+  ASSET_MAX_BYTES,
+  DeleteAssetQuerySchema,
   DeleteSlideQuerySchema,
   OrderRequestSchema,
   PreviewRequestSchema,
   SaveSlideRequestSchema,
   TOKEN_PLACEHOLDER,
 } from "../shared/api.js";
+import { deckAssets, deleteAsset, uploadAsset } from "./assets.js";
 import { StudioError } from "./errors.js";
 import { checkApiRequest, checkHost } from "./guard.js";
 import { coreExports, exportsInfo, startExport, type ExportServices } from "./exports.js";
@@ -62,6 +65,8 @@ import { prepareDraftKit, runDraftKit } from "./ai/draft-kit.js";
 import { ChatSessionStore, runChat } from "./ai/chat.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
+/** Room for multipart boundaries and headers around an 8 MB image. */
+export const UPLOAD_OVERHEAD_BYTES = 64 * 1024;
 
 export const UI_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; " +
@@ -180,7 +185,12 @@ export function createApp(options: AppOptions) {
     const file = await deckFile(options.workspace, c.req.param("id"), relative);
     const type = assetMime(file) ?? "application/octet-stream";
     return new Response(await fs.readFile(file), {
-      headers: { "Content-Type": type, "Content-Security-Policy": FILE_CSP, "Cache-Control": "no-store" },
+      headers: {
+        "Content-Type": type,
+        "Content-Security-Policy": FILE_CSP,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   });
   app.on(["POST", "PUT", "PATCH", "DELETE"], "/api/decks/:id/files/*", () => {
@@ -192,14 +202,23 @@ export function createApp(options: AppOptions) {
     checkApiRequest(c.req.raw.headers, options.port(), options.token);
     await next();
   });
-  api.use(
-    "*",
-    bodyLimit({
-      maxSize: MAX_BODY_BYTES,
-      onError: () => {
-        throw new StudioError(413, "PAYLOAD_TOO_LARGE", "Request body is larger than 2 MB.");
-      },
-    }),
+  const smallBodies = bodyLimit({
+    maxSize: MAX_BODY_BYTES,
+    onError: () => {
+      throw new StudioError(413, "PAYLOAD_TOO_LARGE", "Request body is larger than 2 MB.");
+    },
+  });
+  // D20: an image upload is the only body allowed past 2 MB, checked while it streams in.
+  const uploadBodies = bodyLimit({
+    maxSize: ASSET_MAX_BYTES + UPLOAD_OVERHEAD_BYTES,
+    onError: () => {
+      throw new StudioError(413, "ASSET_TOO_LARGE", "Images can be at most 8 MB.");
+    },
+  });
+  api.use("*", (c, next) =>
+    c.req.method === "POST" && /^\/api\/decks\/[^/]+\/assets$/.test(c.req.path)
+      ? uploadBodies(c, next)
+      : smallBodies(c, next),
   );
   api.get("/workspace", async (c) => c.json(await scanWorkspace(options.workspace, options.library)));
   api.get("/decks/:id", async (c) => c.json(await deckDetail(options.workspace, c.req.param("id"))));
@@ -214,6 +233,19 @@ export function createApp(options: AppOptions) {
   api.delete("/decks/:id/slides/:slideId{.+}", async (c) => {
     const { baseHash } = DeleteSlideQuerySchema.parse({ baseHash: c.req.query("baseHash") });
     return c.json(await deleteSlide(options.workspace, c.req.param("id"), c.req.param("slideId"), baseHash));
+  });
+  // US-16: deck images.
+  api.get("/decks/:id/assets", async (c) => c.json(await deckAssets(options.workspace, c.req.param("id"))));
+  api.post("/decks/:id/assets", async (c) => {
+    const body = await c.req.parseBody().catch(() => {
+      throw new StudioError(422, "VALIDATION_FAILED", "Send the image as multipart/form-data.");
+    });
+    return c.json(await uploadAsset(options.workspace, c.req.param("id"), body.file), 201);
+  });
+  api.delete("/decks/:id/assets/:path{.+}", async (c) => {
+    const { force } = DeleteAssetQuerySchema.parse({ force: c.req.query("force") });
+    await deleteAsset(options.workspace, c.req.param("id"), `assets/${c.req.param("path")}`, force === "1");
+    return c.body(null, 204);
   });
   api.put("/decks/:id/order", async (c) => {
     const { baseHash, slideIds } = OrderRequestSchema.parse(await jsonBody(c));

@@ -1258,3 +1258,94 @@ fieldset.plain[hidden] {
 .chat-form textarea {
   flex: 1;
 }
+
+/* US-16: deck images */
+.images-panel {
+  margin-top: 2rem;
+}
+.images-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.image-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+}
+.image-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem;
+  min-width: 0;
+}
+.image-card.selected {
+  border-color: var(--accent);
+}
+.image-card img {
+  display: block;
+  width: 100%;
+  height: 110px;
+  object-fit: contain;
+  background: var(--bg);
+  border-radius: 4px;
+}
+.image-card p {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.image-name {
+  font-weight: 600;
+}
+.image-actions {
+  margin-top: 0.4rem;
+}
+.image-card button.danger,
+.image-confirm button.danger {
+  color: var(--danger);
+}
+.image-confirm {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+}
+.image-confirm ul {
+  margin: 0.25rem 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+.image-confirm button + button {
+  margin-left: 0.5rem;
+}
+.upload-errors {
+  color: var(--danger);
+  padding-left: 1.1rem;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.image-dialog {
+  width: min(820px, calc(100vw - 2rem));
+}
+.image-dialog .image-grid {
+  max-height: 46vh;
+  overflow: auto;
+}
+.markdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
