@@ -39,11 +39,10 @@ export function UndoControls({
     try {
       const result = await undoDeck(deckId, direction);
       queryClient.setQueryData(historyKey(deckId), result.history);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["deck", deckId] }),
-        queryClient.invalidateQueries({ queryKey: assetsKey(deckId) }),
-        queryClient.invalidateQueries({ queryKey: ["workspace"] }),
-      ]);
+      // Ready for the next press as soon as the server answers; the refetches run behind it.
+      setBusy(false);
+      for (const queryKey of [["deck", deckId], assetsKey(deckId), ["workspace"]])
+        void queryClient.invalidateQueries({ queryKey });
       onChanged?.(result);
     } catch (caught) {
       setError(
