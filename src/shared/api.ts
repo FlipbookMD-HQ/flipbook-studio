@@ -35,6 +35,11 @@ export const ERROR_CODES = [
   "CANCELLED",
   "PROPOSAL_NOT_FOUND",
   "STALE_PROPOSAL",
+  "ASSET_TOO_LARGE",
+  "ASSET_TYPE",
+  "ASSET_CONTENT_MISMATCH",
+  "ASSET_IN_USE",
+  "ASSET_NOT_FOUND",
   "INTERNAL",
 ] as const;
 
@@ -181,6 +186,33 @@ export const AddSlideRequestSchema = z.object({
 export const AddSlideResponseSchema = StructureResponseSchema.extend({ slide: SlideDocSchema });
 export const OrderRequestSchema = z.object({ baseHash: Hash, slideIds: z.array(z.string()).max(1000) });
 export const DeleteSlideQuerySchema = z.object({ baseHash: Hash });
+
+// US-16: deck images (tech-spec D18-D20).
+export const ASSET_MAX_BYTES = 8 * 1024 * 1024;
+export const ASSET_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"] as const;
+export const AssetUseSchema = z.object({
+  deckId: z.string(),
+  deckPath: z.string(),
+  /** null when the deck's own theme (presentation.css) uses the image. */
+  slideId: z.string().nullable(),
+  label: z.string(),
+});
+export type AssetUse = z.infer<typeof AssetUseSchema>;
+export const DeckAssetSchema = z.object({
+  /** Relative to the deck root (or the single file's folder): "assets/cover.png". */
+  path: z.string(),
+  bytes: z.number().int().nonnegative(),
+  mime: z.string(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  usedBy: z.array(AssetUseSchema),
+});
+export type DeckAsset = z.infer<typeof DeckAssetSchema>;
+export const DeckAssetsResponseSchema = z.object({ assets: z.array(DeckAssetSchema) });
+export type DeckAssetsResponse = z.infer<typeof DeckAssetsResponseSchema>;
+export const UploadAssetResponseSchema = z.object({ asset: DeckAssetSchema });
+export type UploadAssetResponse = z.infer<typeof UploadAssetResponseSchema>;
+export const DeleteAssetQuerySchema = z.object({ force: z.enum(["1"]).optional() });
 
 // US-7: kits (themes first; templates, blueprints and groups follow in US-8 to US-10).
 export const KIT_KINDS = ["theme", "template", "blueprint", "group"] as const;
