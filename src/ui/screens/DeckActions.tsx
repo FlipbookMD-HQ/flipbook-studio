@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApiError, ExportJob, ExportRequest, ExportsInfo, Violation } from "../../shared/api";
+import type {
+  ApiError,
+  ExportJob,
+  ExportRequest,
+  ExportsInfo,
+  UndoResponse,
+  Violation,
+} from "../../shared/api";
 import { ApiRequestError, cancelJob, followJob, getExports, presentDeck, startExport } from "../api";
 import { ErrorNotice } from "./Shell";
+import { UndoControls } from "./UndoControls";
 
 const asApiError = (error: unknown): ApiError =>
   error instanceof ApiRequestError ? error.error : { code: "INTERNAL", message: (error as Error).message };
@@ -14,15 +22,20 @@ function blankTab(): Window | null {
   return tab;
 }
 
-/** Present and Export buttons for a deck, in the top bar. */
+/** Undo, Redo, Present and Export for a deck, in the top bar. */
 export function DeckActions({
   deckId,
   slideIndex,
   disabled,
+  undoBlocked,
+  onUndo,
 }: {
   deckId: string;
   slideIndex: number;
   disabled?: boolean;
+  /** Why Undo and Redo are disabled right now (unsaved edits), if they are. */
+  undoBlocked?: string | null;
+  onUndo?: (result: UndoResponse) => void;
 }) {
   const [presentError, setPresentError] = useState<ApiError | null>(null);
   const [announcerUrl, setAnnouncerUrl] = useState<string | null>(null);
@@ -50,6 +63,7 @@ export function DeckActions({
 
   return (
     <>
+      <UndoControls deckId={deckId} blocked={undoBlocked} onChanged={onUndo} />
       <button type="button" onClick={present} disabled={disabled}>
         Present
       </button>

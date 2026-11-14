@@ -32,6 +32,15 @@ A deck's images live in its `assets/` folder (for a single-file deck, the `asset
 - **Slide editor → Insert image:** pick or upload an image, write its alt text, then **Insert** it at the cursor or **Replace image** to swap the slide's first image.
 - **Drop or paste** an image into the Markdown editor to upload it and insert it where it lands.
 
+## Undo and redo
+
+**Undo** and **Redo** in the top bar reverse the changes Studio wrote to the open deck, one step at a time, and put back the exact earlier files: slide saves, added, deleted and reordered slides, accepted AI edits, and image uploads and deletes. Each button names the step it affects, for example "Undo: Delete slide 3". Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z do the same when the focus isn't in a text field or editor (there they undo your typing).
+
+- History lasts for this Studio session and is lost when Studio stops. It keeps the last 50 steps (at most 64 MB) per deck.
+- If a file was changed outside Studio after a step, Studio won't undo over it and says which file changed.
+- While the open slide has unsaved edits, Undo and Redo wait until you save or discard them.
+- Theme, template, blueprint and media kit editors aren't part of this history; their editors keep their own text undo.
+
 ## Develop
 
 ```sh
