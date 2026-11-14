@@ -11,6 +11,10 @@ import { ErrorNotice, Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
 import { AiPanel } from "./AiPanel";
 import { ChatPanel } from "./ChatPanel";
+import { InsertImageDialog } from "./InsertImageDialog";
+import { assetsKey, uploadFiles } from "./ImagesPanel";
+import { altFromPath, hasImage, imageInsertion, imageLine, replaceFirstImage } from "../images";
+import type { EditorView } from "codemirror";
 
 const PREVIEW_DELAY_MS = 250;
 
@@ -42,6 +46,11 @@ export function SlideEditor() {
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<{ disk: DiskVersion | null } | null>(null);
   const loadedFor = useRef<string | null>(null);
+  // US-16: images.
+  const editorView = useRef<EditorView | null>(null);
+  const [imageDialog, setImageDialog] = useState(false);
+  const [imageErrors, setImageErrors] = useState<{ name: string; error: ApiError }[]>([]);
+  const [imageBusy, setImageBusy] = useState(false);
 
   // Load the slide's saved draft when the slide (or the deck) first arrives.
   useEffect(() => {
@@ -181,6 +190,31 @@ export function SlideEditor() {
     setDraft((current) => (current ? { ...current, ...patch } : current));
   const templateError = previewError?.details?.field === "template" ? previewError.message : null;
 
+  /** Puts image lines at `pos` in the editor (each in its own paragraph) and moves the cursor after them. */
+  const insertImages = (lines: string[], pos?: number) => {
+    if (!lines.length) return;
+    const view = editorView.current;
+    const doc = view ? view.state.doc.toString() : draft.markdown;
+    const at = Math.min(pos ?? (view ? view.state.selection.main.head : doc.length), doc.length);
+    const text = imageInsertion(doc, at, lines.join("\n\n"));
+    if (view) {
+      view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
+      view.focus();
+    } else update({ markdown: doc.slice(0, at) + text + doc.slice(at) });
+  };
+
+  const dropImages = async (files: File[], pos: number) => {
+    setImageBusy(true);
+    const { uploaded, failed } = await uploadFiles(data.id, files);
+    setImageBusy(false);
+    setImageErrors(failed);
+    if (uploaded.length) void queryClient.invalidateQueries({ queryKey: assetsKey(data.id) });
+    insertImages(
+      uploaded.map((asset) => imageLine(altFromPath(asset.path), asset.path)),
+      pos,
+    );
+  };
+
   return (
     <Shell
       crumb={
@@ -292,9 +326,45 @@ export function SlideEditor() {
           </div>
 
           <div className="field">
-            <span>Markdown</span>
-            <MarkdownEditor value={draft.markdown} onChange={(markdown) => update({ markdown })} />
+            <div className="markdown-head">
+              <span>Markdown</span>
+              <button type="button" onClick={() => setImageDialog(true)}>
+                Insert image
+              </button>
+            </div>
+            <MarkdownEditor
+              value={draft.markdown}
+              onChange={(markdown) => update({ markdown })}
+              viewRef={editorView}
+              onFiles={(files, pos) => void dropImages(files, pos)}
+            />
+            {imageBusy ? <p className="muted">Uploading…</p> : null}
+            {imageErrors.length ? (
+              <ul className="upload-errors" role="alert" data-testid="upload-errors">
+                {imageErrors.map(({ name, error }) => (
+                  <li key={name}>
+                    <strong>{name}</strong>: {error.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
+          {imageDialog ? (
+            <InsertImageDialog
+              deckId={data.id}
+              canReplace={hasImage(draft.markdown)}
+              onClose={() => setImageDialog(false)}
+              onInsert={(assetPath, alt) => {
+                setImageDialog(false);
+                insertImages([imageLine(alt, assetPath)]);
+              }}
+              onReplace={(assetPath, alt) => {
+                setImageDialog(false);
+                const next = replaceFirstImage(draft.markdown, alt, assetPath);
+                if (next !== null) update({ markdown: next });
+              }}
+            />
+          ) : null}
 
           <label className="field">
             <span>Speaker notes</span>
