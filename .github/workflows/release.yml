@@ -55,11 +55,15 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Build
+        run: npm run build
+
       - name: Pack
-        id: pack
         run: |
-          file=$(npm pack --json | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0, 'utf8'))[0].filename)")
-          mv "$file" flipbook-studio.tgz
+          # Already built above; --ignore-scripts skips prepack, whose build output would mix with npm's.
+          mkdir -p pack
+          npm pack --ignore-scripts --pack-destination pack
+          mv pack/*.tgz flipbook-studio.tgz
           sha256sum flipbook-studio.tgz > flipbook-studio.tgz.sha256
           cat flipbook-studio.tgz.sha256
 
