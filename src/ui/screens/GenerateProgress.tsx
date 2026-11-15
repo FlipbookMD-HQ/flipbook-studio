@@ -15,6 +15,20 @@ type Status =
 const heading = (draft: SlideDraft) =>
   (draft.markdown.split("\n").find((line) => line.trim()) ?? "").replace(/^#+\s*/, "").slice(0, 80);
 
+/** Opens a new deck at its first failing slide, or at slide 1 (US-13, US-18). */
+export function useOpenDeck() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  return async (deckId: string, violations: Violation[]) => {
+    await queryClient.invalidateQueries({ queryKey: ["workspace"] });
+    const deck = await getDeck(deckId);
+    queryClient.setQueryData(["deck", deckId], deck);
+    const sources = new Set(violations.map((violation) => violation.source));
+    const target = deck.slides.find((slide) => sources.has(slide.source)) ?? deck.slides[0];
+    navigate(target ? `/decks/${deckId}/slides/${encodeURIComponent(target.id)}` : `/decks/${deckId}`);
+  };
+}
+
 /**
  * Runs one generation (US-13): slides appear as they stream in, then repair rounds; on done it
  * opens the deck at its first failing slide (or slide 1). The parent asks before cancelling.
@@ -29,22 +43,13 @@ export function GenerateProgress({
   /** The run ended without opening a deck (failed, cancelled): the form can be used again. */
   onFinished: () => void;
 }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [status, setStatus] = useState<Status>({ state: "running" });
   const [saveAsName, setSaveAsName] = useState(`${request.name}-2`.slice(0, 60));
   const [saveAsError, setSaveAsError] = useState<ApiError | null>(null);
   const started = useRef(false);
 
-  const open = async (deckId: string, violations: Violation[]) => {
-    await queryClient.invalidateQueries({ queryKey: ["workspace"] });
-    const deck = await getDeck(deckId);
-    queryClient.setQueryData(["deck", deckId], deck);
-    const sources = new Set(violations.map((violation) => violation.source));
-    const target = deck.slides.find((slide) => sources.has(slide.source)) ?? deck.slides[0];
-    navigate(target ? `/decks/${deckId}/slides/${encodeURIComponent(target.id)}` : `/decks/${deckId}`);
-  };
+  const open = useOpenDeck();
 
   useEffect(() => {
     if (started.current) return;
