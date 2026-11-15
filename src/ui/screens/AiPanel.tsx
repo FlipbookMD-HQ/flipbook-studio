@@ -90,6 +90,7 @@ export function AiPanel({
   return (
     <div className="ai-panel">
       <AiAction
+        task="rewrite"
         onClick={() => setOpen((value) => !value)}
         disabled={dirty || running}
         title={dirty ? "Save your edits first." : "Rewrite this slide with AI"}

@@ -69,7 +69,11 @@ export function DraftKitButton({ kind, deckId }: { kind: KitKind; deckId?: strin
   const [open, setOpen] = useState(false);
   return (
     <>
-      <AiAction onClick={() => setOpen(true)} title={`Draft a ${LABELS[kind]} from a description`}>
+      <AiAction
+        task="draft"
+        onClick={() => setOpen(true)}
+        title={`Draft a ${LABELS[kind]} from a description`}
+      >
         Draft with AI
       </AiAction>
       {open ? <DraftKitDialog kind={kind} deckId={deckId} onClose={() => setOpen(false)} /> : null}

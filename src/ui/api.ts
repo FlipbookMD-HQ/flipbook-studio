@@ -262,7 +262,13 @@ export type AiEvent =
   | { event: "repair"; data: { round: number; violations: Violation[] } }
   | {
       event: "done";
-      data: { noChange?: boolean; deckId?: string; violations?: Violation[]; sessionId?: string };
+      data: {
+        noChange?: boolean;
+        deckId?: string;
+        violations?: Violation[];
+        sessionId?: string;
+        model?: string;
+      };
     }
   | { event: "failed"; data: { error: ApiError } };
 

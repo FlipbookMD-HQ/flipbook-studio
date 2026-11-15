@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import type { AiTask } from "../shared/api";
 import { getSettings } from "./api";
 
 /**
@@ -14,6 +15,8 @@ export function useLlmStatus() {
     loading: settings.isPending,
     configured: Boolean(llm?.baseUrl && llm.model),
     llm,
+    /** The model an AI task runs on: its own (US-19), else the default; null without an LLM. */
+    modelFor: (task: AiTask) => (llm?.model ? (llm.taskModels?.[task] ?? llm.model) : null),
   };
 }
 
@@ -27,14 +30,18 @@ export function AiAction({
   disabled = false,
   title,
   className,
+  task,
 }: {
   children: ReactNode;
+  /** The AI task this button runs (US-19): its model is named next to the button. */
+  task?: AiTask;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
   className?: string;
 }) {
-  const { configured, loading } = useLlmStatus();
+  const { configured, loading, modelFor } = useLlmStatus();
+  const model = task ? modelFor(task) : null;
   return (
     <span className="ai-action" data-testid="ai-action">
       <button
@@ -42,11 +49,18 @@ export function AiAction({
         className={className}
         onClick={onClick}
         disabled={disabled || loading || !configured}
-        title={configured ? title : "Set up a local model in Settings first."}
+        title={
+          configured ? [title, model].filter(Boolean).join(" · ") : "Set up a local model in Settings first."
+        }
       >
         <span aria-hidden="true">✦ </span>
         {children}
       </button>
+      {configured && model ? (
+        <small className="ai-model muted" data-testid="ai-model">
+          {model}
+        </small>
+      ) : null}
       {!loading && !configured ? (
         <Link to="/settings" className="ai-setup">
           Set up a local model

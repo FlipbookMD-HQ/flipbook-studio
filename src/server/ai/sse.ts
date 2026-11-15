@@ -31,7 +31,13 @@ export function aiError(error: unknown, baseUrl?: string, model?: string): ApiEr
 export function sseTask(
   request: Request,
   handler: (context: SseContext) => Promise<Record<string, unknown> | void>,
-  options: { log?: (line: string) => void; baseUrl?: string; model?: string } = {},
+  options: {
+    log?: (line: string) => void;
+    baseUrl?: string;
+    model?: string;
+    /** The AI task's label (US-19): named when its model is missing. */
+    task?: string;
+  } = {},
 ): Response {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -62,11 +68,15 @@ export function sseTask(
         try {
           const result = await handler({ signal: controller.signal, send: write });
           if (controller.signal.aborted) throw new LlmError("cancelled", "Cancelled.");
-          write("done", result ?? {});
+          // US-19 (D30): the final event names the model that ran.
+          write("done", { ...(result ?? {}), ...(options.model ? { model: options.model } : {}) });
         } catch (error) {
           const apiError = controller.signal.aborted
             ? { code: "CANCELLED" as const, message: "Cancelled." }
             : aiError(error, options.baseUrl, options.model);
+          if (apiError.code === "LLM_MODEL_NOT_FOUND" && options.task) {
+            apiError.message = `${options.task} is set to use ${options.model ?? "a model"}, which the server doesn't have. ${apiError.message} Or pick another model for it in Settings → Model for each task.`;
+          }
           if (apiError.code === "INTERNAL") options.log?.(`ai INTERNAL ${(error as Error)?.stack ?? error}`);
           write("failed", { error: apiError });
         } finally {
