@@ -1,6 +1,6 @@
 {
   "name": "@flipbook-md/studio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Self-hosted editor for Flipbook MD decks, themes, templates, blueprints and media kits.",
   "license": "MIT",
