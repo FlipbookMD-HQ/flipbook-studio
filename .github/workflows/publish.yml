@@ -74,5 +74,10 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           tag="v${{ steps.version.outputs.version }}"
-          git tag "$tag"
-          git push origin "$tag"
+          # A GitHub Release (release.yml) may already have created this tag.
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists; not tagging again."
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi

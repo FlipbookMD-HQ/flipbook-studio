@@ -2,7 +2,7 @@
 
 A self-hosted editor for [Flipbook MD](https://github.com/uminocelo/flipbook-md) decks. Studio runs on your own machine and reads and writes the same deck files as the `flipbook` CLI, so a deck made in either one works in both.
 
-**Status: coming soon.** Studio isn't on npm yet; run it from a checkout (below).
+**Status: preview.** Studio isn't on npm yet. Install a release from GitHub (below), or run it from a checkout.
 
 What Studio does today:
 
@@ -17,9 +17,24 @@ What Studio does today:
 
 Studio builds on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core), the same library as the CLI.
 
-## Run
+## Install
 
-Studio needs Node.js 20 or newer. Until it's on npm, build it from this repository:
+Studio needs Node.js 20 or newer. Install the latest release from GitHub:
+
+```sh
+npm install -g https://github.com/uminocelo/flipbook-studio/releases/latest/download/flipbook-studio.tgz
+flipbook-studio ~/decks
+```
+
+Run the same install command again to update. To try Studio without installing it, or to pin a version, use that release's tarball (each [release](https://github.com/uminocelo/flipbook-studio/releases) lists its own commands):
+
+```sh
+npx https://github.com/uminocelo/flipbook-studio/releases/download/v0.1.0/flipbook-studio.tgz ~/decks
+```
+
+Exporting a carousel or video also needs Chromium (`npx playwright install chromium`) and, for video, ffmpeg; Studio says so when one is missing.
+
+### From a checkout
 
 ```sh
 npm install
@@ -28,6 +43,8 @@ node bin/flipbook-studio.js ~/decks
 ```
 
 Run `npm link` once to get a `flipbook-studio` command you can use from any folder.
+
+## Run
 
 Studio serves on `127.0.0.1` (port 4321, or a free port when 4321 is busy), prints the URL, and opens your browser.
 
@@ -88,7 +105,13 @@ npm run lint && npm run typecheck
 
 Studio depends on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core) from npm. To develop both together, clone `flipbook-md-core` next to this repository and run `npm link ../flipbook-md-core`.
 
-Publishing is manual for now: run the **Publish** workflow in GitHub Actions once Studio is ready for npm.
+### Releasing
+
+1. Set the version in `package.json` (`npm version 0.1.0 --no-git-tag-version`), commit and push to `main`, and wait for CI to pass.
+2. Tag that commit and push the tag: `git tag v0.1.0 && git push origin v0.1.0`.
+3. The **Release** workflow checks the tag matches `package.json`, runs lint, types and unit tests, packs Studio, installs the tarball and starts it once, then creates the GitHub Release with `flipbook-studio.tgz`, its SHA-256 checksum and generated notes. A version with a `-` (such as `0.2.0-beta.1`) becomes a prerelease, which the `latest` download link skips.
+
+npm publishing is separate and manual: run the **Publish** workflow in GitHub Actions once Studio is ready for npm.
 
 ## Local model (AI features)
 
