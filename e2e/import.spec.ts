@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -25,6 +27,17 @@ const GUIDE = buildDocx({
     { rel: "rIdEmf", file: "v.emf", data: Buffer.from("EMF") },
   ],
 });
+
+/** `flipbook check`'s exit status and errors: FLIPBOOK_CLI, else a sibling flipbook-md checkout, else null. */
+function flipbookCheck(target: string) {
+  const sibling = path.resolve("../flipbook-md/bin/flipbook.js");
+  const cli = process.env.FLIPBOOK_CLI ?? (existsSync(sibling) ? sibling : null);
+  if (!cli) return null;
+  return spawnSync(process.execPath, [cli, "check", target], {
+    encoding: "utf8",
+    env: { ...process.env, FLIPBOOK_HOME: path.resolve("fixtures/library") },
+  });
+}
 
 let stub: LlmStub;
 let workspace: string;
@@ -112,6 +125,28 @@ test("imports a Word file as is, with its image, without a model", async ({ page
   expect(await fs.readdir(path.join(workspace, "indexes", "assets"))).toEqual(["image1.png"]);
   const tmp = await fs.readdir(path.join(workspace, ".flipbook-studio-tmp")).catch(() => [] as string[]);
   expect(tmp.filter((name) => name !== "sources")).toEqual([]);
+  const check = flipbookCheck(path.join(workspace, "indexes"));
+  if (check) expect(check.status, check.stderr).toBe(0);
+});
+
+test("imports a Markdown file as is: one slide per section, words unchanged", async ({ page }) => {
+  await start(false);
+  const markdown =
+    "# Caching\n\nWhy it helps.\n\n## Where\n\n- CDN\n- Browser\n\n## When not\n\nData that changes every second.\n";
+  const dialog = await pickFile(page, "caching.md", Buffer.from(markdown));
+  const preview = dialog.getByRole("region", { name: "What Studio read" });
+  await expect(preview).toContainText("caching.md · Markdown · 2 sections");
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/decks/${id("caching")}/slides/`));
+  await expect(page.getByTestId("slide-row")).toHaveCount(3);
+  const slides = (await fs.readdir(path.join(workspace, "caching", "slides"))).sort();
+  const texts = await Promise.all(
+    slides.map((file) => fs.readFile(path.join(workspace, "caching", "slides", file), "utf8")),
+  );
+  expect(texts.join("\n")).toContain("- CDN\n- Browser");
+  expect(texts[2]).toContain("Data that changes every second.");
+  const check = flipbookCheck(path.join(workspace, "caching"));
+  if (check) expect(check.status, check.stderr).toBe(0);
 });
 
 test("refuses a PDF in the browser and a Latin-1 text file on the server", async ({ page }) => {
