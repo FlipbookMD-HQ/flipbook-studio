@@ -212,7 +212,11 @@ export async function launch(
     token,
     close: async () => {
       await app.shutdown();
-      await new Promise<void>((resolve) => bound.server.close(() => resolve()));
+      // close() waits for every open connection; an open tab or a streaming request would keep
+      // Studio running after Ctrl+C, so drop them once no new ones are accepted.
+      const closed = new Promise<void>((resolve) => bound.server.close(() => resolve()));
+      (bound.server as { closeAllConnections?: () => void }).closeAllConnections?.();
+      await closed;
     },
   };
 }

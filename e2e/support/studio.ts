@@ -32,9 +32,17 @@ export async function startStudio(
   return { url, banner: out, child };
 }
 
+/** Stops Studio; one that hasn't exited after 10 s is killed so a stuck shutdown fails loudly. */
 export const stopStudio = (child: ChildProcess) =>
-  new Promise<void>((resolve) => {
-    if (child.exitCode != null) return resolve();
-    child.once("exit", () => resolve());
+  new Promise<void>((resolve, reject) => {
+    if (child.exitCode != null || child.signalCode != null) return resolve();
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Studio didn't stop within 10 s of SIGTERM."));
+    }, 10_000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
     child.kill();
   });
