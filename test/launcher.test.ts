@@ -114,4 +114,19 @@ describe("launch", () => {
     const loud = await start({ open: true });
     expect(loud.open).toHaveBeenCalledWith(loud.launched.url);
   });
+
+  it("closes even while a client holds a connection open mid-request", async () => {
+    const { launched } = await start();
+    running.pop();
+    const socket = net.connect(launched.port, "127.0.0.1");
+    await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+    // Headers never finished: an active connection that server.close() alone would wait on.
+    socket.write("GET /api/workspace HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    socket.on("error", () => {});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const started = Date.now();
+    await launched.close();
+    expect(Date.now() - started).toBeLessThan(2000);
+    socket.destroy();
+  });
 });

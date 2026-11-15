@@ -1,10 +1,12 @@
 name: Publish
 
-# Publishes to npm when a merge to main carries a package.json version
-# that is not on npm yet. Bump "version" in the PR to release it.
+# Publishes to npm when the package.json version is not on npm yet.
+# Manual-only for now (Actions → Publish → Run workflow): @flipbook-md/studio
+# isn't on npm yet and npm trusted publishing isn't set up for it. To publish on
+# every merge to main again, add back:
+#   push:
+#     branches: [main]
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

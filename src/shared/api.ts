@@ -58,7 +58,7 @@ export const ApiErrorSchema = z.object({
   code: ErrorCodeSchema,
   message: z.string(),
   path: z.string().optional(),
-  details: z.record(z.unknown()).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 
@@ -108,7 +108,7 @@ export const SlideDraftSchema = z.object({
   type: z.string().nullable(),
   notes: z.string().max(50_000),
   title: z.string().max(200).nullable(),
-  directives: z.record(z.string()),
+  directives: z.record(z.string(), z.string()),
 });
 export type SlideDraft = z.infer<typeof SlideDraftSchema>;
 
@@ -138,7 +138,7 @@ export const DeckDetailSchema = z.object({
   group: z.string().nullable(),
   style: z.string().nullable(),
   slides: z.array(SlideDocSchema),
-  hashes: z.record(z.string()),
+  hashes: z.record(z.string(), z.string()),
   /** Template names this deck can use: built-ins, the deck's templates.yml and its kit. */
   templates: z.array(z.string()),
   /** Page types its blueprint defines (empty without a blueprint). */
@@ -174,7 +174,7 @@ export const PreviewResponseSchema = z.object({ html: z.string(), violations: z.
 export const SaveSlideRequestSchema = z.object({ baseHash: Hash, draft: SlideDraftSchema });
 export const SaveSlideResponseSchema = z.object({
   slide: SlideDocSchema,
-  hashes: z.record(z.string()),
+  hashes: z.record(z.string(), z.string()),
   violations: z.array(ViolationSchema),
 });
 
@@ -182,7 +182,7 @@ export const SaveSlideResponseSchema = z.object({
 // Each response carries every slide and hash, since single-file slide IDs are positions.
 export const StructureResponseSchema = z.object({
   slides: z.array(SlideDocSchema),
-  hashes: z.record(z.string()),
+  hashes: z.record(z.string(), z.string()),
   violations: z.array(ViolationSchema),
 });
 export type StructureResponse = z.infer<typeof StructureResponseSchema>;
@@ -273,7 +273,7 @@ export const UpdateKitRequestSchema = z.object({
     .nullable(),
   source: KIT_SOURCE.optional(),
   /** RFC 7386 merge patch for YAML kits. A deck template patch may be null (removes it). */
-  patch: z.record(z.unknown()).nullable().optional(),
+  patch: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type UpdateKitRequest = z.infer<typeof UpdateKitRequestSchema>;
 export const KitPreviewRequestSchema = z.object({
@@ -481,7 +481,7 @@ export const ProposalSchema = z.object({
   summary: z.string(),
   ops: z.array(ProposalOpSchema),
   /** File key → hash when the proposal was made (deck files as in DeckDetail.hashes; kits as kit:<kind>:<scope>:<name>). */
-  baseHashes: z.record(z.string().nullable()),
+  baseHashes: z.record(z.string(), z.string().nullable()),
 });
 export type Proposal = z.infer<typeof ProposalSchema>;
 export const ApplyProposalRequestSchema = z.object({ opIds: z.array(OpId).max(500) });
@@ -494,7 +494,7 @@ export const ApplyProposalResponseSchema = z.object({
       message: z.string(),
     }),
   ),
-  hashes: z.record(z.string()),
+  hashes: z.record(z.string(), z.string()),
 });
 export type ApplyProposalResponse = z.infer<typeof ApplyProposalResponseSchema>;
 
