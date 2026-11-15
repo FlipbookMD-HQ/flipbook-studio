@@ -5,7 +5,7 @@ name: Release
 # The tag must match package.json. The asset is the `npm pack` tarball under a fixed name,
 # flipbook-studio.tgz, so the README's .../releases/latest/download/flipbook-studio.tgz
 # always installs the newest release. A version with a "-" (0.2.0-beta.1) becomes a
-# prerelease, which "latest" skips. Nothing is published to npm (see publish.yml).
+# prerelease, which "latest" skips. Studio is never published to npm.
 on:
   push:
     tags: ["v*"]
