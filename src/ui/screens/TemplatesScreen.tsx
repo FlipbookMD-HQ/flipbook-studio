@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ApiRequestError, getKit, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 import { DraftKitButton } from "./DraftKitDialog";
+import { DuplicateKitButton } from "./Duplicate";
 
 export const templatePath = (scope: "library" | "deck", name: string, deckId?: string) =>
   scope === "deck"
@@ -57,6 +58,7 @@ export function TemplatesScreen() {
             <li key={template.name}>
               <Link to={templatePath("library", template.name)}>{template.name}</Link>{" "}
               <span className="badge">Library</span>
+              <DuplicateKitButton kind="template" name={template.name} scope="library" />
             </li>
           ))}
         </ul>

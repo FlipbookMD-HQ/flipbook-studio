@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 import { DraftKitButton } from "./DraftKitDialog";
+import { DuplicateKitButton } from "./Duplicate";
 
 export const kitPath = (scope: "library" | "builtin", name: string) =>
   `/kits/media/${scope}/${encodeURIComponent(name)}`;
@@ -47,6 +48,7 @@ export function MediaKitsScreen() {
             <li key={group.name}>
               <Link to={kitPath("library", group.name)}>{group.name}</Link>{" "}
               {group.description ? <span className="muted">{group.description}</span> : null}
+              <DuplicateKitButton kind="group" name={group.name} scope="library" />
             </li>
           ))}
         </ul>
@@ -60,6 +62,7 @@ export function MediaKitsScreen() {
             <Link to={kitPath("builtin", group.name)}>{group.name}</Link>{" "}
             <span className="badge">Built-in</span>{" "}
             {group.description ? <span className="muted">{group.description}</span> : null}
+            <DuplicateKitButton kind="group" name={group.name} scope="builtin" />
           </li>
         ))}
       </ul>

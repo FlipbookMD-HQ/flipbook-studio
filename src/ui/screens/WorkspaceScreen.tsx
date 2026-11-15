@@ -5,6 +5,7 @@ import { ApiRequestError, getWorkspace } from "../api";
 import type { DeckSummary } from "../../shared/api";
 import { ErrorNotice, Shell } from "./Shell";
 import { NewDeckDialog } from "./NewDeckDialog";
+import { DuplicateDeckButton } from "./Duplicate";
 
 function DeckCard({ deck }: { deck: DeckSummary }) {
   if (deck.error) {
@@ -25,6 +26,7 @@ function DeckCard({ deck }: { deck: DeckSummary }) {
           {deck.group ? ` · ${deck.group}` : ""}
         </p>
       </Link>
+      <DuplicateDeckButton deckId={deck.id} className="link card-action" />
     </li>
   );
 }

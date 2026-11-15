@@ -161,6 +161,19 @@ export const CreateDeckRequestSchema = z.object({
 });
 export type CreateDeckRequest = z.infer<typeof CreateDeckRequestSchema>;
 
+// POST /api/decks/:id/duplicate (US-20, D26). The copy goes next to the original.
+export const DuplicateDeckRequestSchema = z.object({
+  name: z.string().regex(DECK_NAME, "Use 1-60 lowercase letters, digits or dashes."),
+  title: z.string().trim().min(1, "Use 1-120 characters.").max(120, "Use 1-120 characters."),
+});
+export type DuplicateDeckRequest = z.infer<typeof DuplicateDeckRequestSchema>;
+export const DuplicateDeckResponseSchema = z.object({
+  deckId: z.string(),
+  /** Symlinks left out of the copy, relative to the deck. */
+  skipped: z.array(z.string()),
+});
+export type DuplicateDeckResponse = z.infer<typeof DuplicateDeckResponseSchema>;
+
 const Hash = z.string().regex(/^[0-9a-f]{64}$/, "Use the sha256 from the last read.");
 
 // POST /api/decks/:id/preview (US-3). Violations stay empty until US-5.
@@ -302,6 +315,13 @@ export const CopyGroupRequestSchema = z.object({
   scope: z.enum(["library", "builtin"]).optional(),
 });
 export type CopyGroupRequest = z.infer<typeof CopyGroupRequestSchema>;
+// POST /api/kits/:kind/:name/copy (US-20, D27). Core checks the name against the kind's rules.
+export const CopyKitRequestSchema = z.object({
+  toName: z.string().min(1).max(60),
+  /** Where the piece being copied lives (default: library, then built-in). */
+  scope: z.enum(["library", "builtin"]).optional(),
+});
+export type CopyKitRequest = z.infer<typeof CopyKitRequestSchema>;
 export const RenameGroupRequestSchema = z.object({
   toName: GROUP_NAME,
   baseHash: z.string().regex(/^[0-9a-f]{64}$/),

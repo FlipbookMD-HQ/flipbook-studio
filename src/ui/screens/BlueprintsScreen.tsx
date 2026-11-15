@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 import { DraftKitButton } from "./DraftKitDialog";
+import { DuplicateKitButton } from "./Duplicate";
 
 export const blueprintPath = (scope: "library" | "deck", name: string) =>
   scope === "deck" ? `/kits/blueprints/deck/${name}` : `/kits/blueprints/library/${encodeURIComponent(name)}`;
@@ -46,6 +47,7 @@ export function BlueprintsScreen() {
             <li key={blueprint.name}>
               <Link to={blueprintPath("library", blueprint.name)}>{blueprint.name}</Link>{" "}
               <span className="badge">Library</span>
+              <DuplicateKitButton kind="blueprint" name={blueprint.name} scope="library" />
             </li>
           ))}
         </ul>

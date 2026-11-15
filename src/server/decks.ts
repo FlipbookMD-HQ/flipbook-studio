@@ -7,6 +7,7 @@ import {
   TEMPLATES,
   ValidationError,
   createDeck,
+  duplicateDeck,
   loadPresentation,
   insertSlide,
   readSlide,
@@ -18,7 +19,14 @@ import {
   type SlideDraft,
   type Violation,
 } from "@flipbook-md/core";
-import type { CreateDeckRequest, DeckDetail, SlideDoc, StructureResponse } from "../shared/api.js";
+import type {
+  CreateDeckRequest,
+  DeckDetail,
+  DuplicateDeckRequest,
+  DuplicateDeckResponse,
+  SlideDoc,
+  StructureResponse,
+} from "../shared/api.js";
 import { StudioError } from "./errors.js";
 import { decodeDeckId, encodeDeckId, resolveInside } from "./paths.js";
 import { findDecks, loadError, type DeckEntry } from "./workspace.js";
@@ -371,6 +379,47 @@ export async function createWorkspaceDeck(root: string, request: CreateDeckReque
         ...(where ? { path: path.basename(where) } : {}),
         ...(fields ? { details: { fields } } : {}),
       });
+    }
+    throw error;
+  }
+}
+
+/** Core error codes from duplicateDeck and the HTTP status each maps to. */
+const DUPLICATE_ERRORS = {
+  DECK_EXISTS: 409,
+  DECK_NOT_FOUND: 404,
+  DECK_LOAD_FAILED: 422,
+  VALIDATION_FAILED: 422,
+} as const;
+
+/** POST /api/decks/:id/duplicate: copies the deck beside itself (D26) and returns the copy's ID. */
+export async function duplicateWorkspaceDeck(
+  root: string,
+  id: string,
+  request: DuplicateDeckRequest,
+): Promise<DuplicateDeckResponse> {
+  const deck = await findDeck(root, id);
+  try {
+    const copy = await duplicateDeck(deck.absolute, request);
+    const relative = path.relative(await fs.realpath(root), await fs.realpath(copy.path));
+    return { deckId: encodeDeckId(relative), skipped: copy.skipped };
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code in DUPLICATE_ERRORS) {
+      const known = code as keyof typeof DUPLICATE_ERRORS;
+      const where = (error as { path?: string }).path;
+      const fields = (error as { fields?: unknown }).fields;
+      throw new StudioError(DUPLICATE_ERRORS[known], known, (error as Error).message, {
+        ...(where ? { path: known === "DECK_LOAD_FAILED" ? deck.relative : path.basename(where) } : {}),
+        ...(fields ? { details: { fields } } : {}),
+      });
+    }
+    if (WRITE_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")) {
+      throw new StudioError(
+        500,
+        "WRITE_FAILED",
+        `Could not write the copy: ${(error as NodeJS.ErrnoException).code}.`,
+      );
     }
     throw error;
   }

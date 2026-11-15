@@ -15,6 +15,7 @@ import {
 import { ApiRequestError, createKit, getDeck, getKit, getWorkspace, previewKit, updateKit } from "../api";
 import { BlueprintEditor } from "./BlueprintEditor";
 import { blueprintPath } from "./BlueprintsScreen";
+import { DuplicateKitButton } from "./Duplicate";
 import { DraftKitButton, kitDraftOf } from "./DraftKitDialog";
 import { CodeEditor } from "./MarkdownEditor";
 import { ErrorNotice, Shell } from "./Shell";
@@ -213,6 +214,9 @@ export function BlueprintScreen() {
       actions={
         <>
           {creating ? <DraftKitButton kind="blueprint" deckId={routeDeck} /> : null}
+          {!creating && scope === "library" && libraryName ? (
+            <DuplicateKitButton kind="blueprint" name={libraryName} scope="library" className="" />
+          ) : null}
           {draft ? <span className="muted">Unsaved draft</span> : null}
           {reason && reason !== "No changes to save." ? (
             <span className="muted" data-testid="save-reason">

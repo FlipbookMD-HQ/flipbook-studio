@@ -1432,3 +1432,13 @@ button.link {
   font-size: 0.9em;
   margin: 0.5rem 0 0;
 }
+
+/* US-20: Duplicate on deck cards and kit rows. */
+.deck-card .card-action {
+  margin: -0.5rem 1rem 0.75rem;
+  font-size: 0.85rem;
+}
+.kit-list .link {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+}
