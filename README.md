@@ -1,15 +1,32 @@
 # Flipbook Studio
 
-A self-hosted editor for [Flipbook MD](https://github.com/uminocelo/flipbook-md) decks. Studio runs on your own machine, reads and writes the same deck files as the `flipbook` CLI, and will connect to a local LLM.
+A self-hosted editor for [Flipbook MD](https://github.com/uminocelo/flipbook-md) decks. Studio runs on your own machine and reads and writes the same deck files as the `flipbook` CLI, so a deck made in either one works in both.
 
-This repository is at its first milestone: it lists the decks in a folder and shows their slides.
+**Status: coming soon.** Studio isn't on npm yet; run it from a checkout (below).
+
+What Studio does today:
+
+- Browse the decks in a folder, create a deck (blank or from a media kit), and edit slides with a form, Markdown and a live preview.
+- Add, reorder and delete slides, see blueprint violations while you edit, and undo or redo changes.
+- Upload images and GIFs, then insert them into slides.
+- Edit themes, templates (on the 3×3 grid), blueprints and media kits.
+- Present a deck and export it as a PNG carousel or an MP4, like the CLI.
+- Start a deck from a Markdown, text or Word file.
+- Optional AI from a model on your machine (Ollama, LM Studio or any OpenAI-compatible server): rewrite a slide, generate a deck, draft a kit piece, and chat about the open deck. Every AI edit is a proposal you accept or reject.
+
+Studio builds on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core), the same library as the CLI.
 
 ## Run
 
+Studio needs Node.js 20 or newer. Until it's on npm, build it from this repository:
+
 ```sh
-npm install -g @flipbook-md/studio
-flipbook-studio ~/decks
+npm install
+npm run build
+node bin/flipbook-studio.js ~/decks
 ```
+
+Run `npm link` once to get a `flipbook-studio` command you can use from any folder.
 
 Studio serves on `127.0.0.1` (port 4321, or a free port when 4321 is busy), prints the URL, and opens your browser.
 
@@ -62,7 +79,9 @@ npm run e2e        # Playwright against fixtures/
 npm run lint && npm run typecheck
 ```
 
-Studio depends on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core). To develop both together, clone `flipbook-md-core` next to this repository and run `npm link ../flipbook-md-core`.
+Studio depends on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core) from npm. To develop both together, clone `flipbook-md-core` next to this repository and run `npm link ../flipbook-md-core`.
+
+Publishing is manual for now: run the **Publish** workflow in GitHub Actions once Studio is ready for npm.
 
 ## Local model (AI features)
 
