@@ -43,6 +43,9 @@ import {
   type ChatRequest,
   type DraftKitRequest,
   type GenerateDeckRequest,
+  ImportDeckResponseSchema,
+  SourceDocumentSchema,
+  type ImportDeckRequest,
 } from "../shared/api";
 import { z } from "zod";
 import { DECK_WRITTEN, isDeckWrite } from "./undo";
@@ -330,6 +333,15 @@ export const saveGeneratedDeck = (runId: string, name: string) =>
     method: "POST",
     body: JSON.stringify({ name }),
   });
+
+// US-18: start a deck from an uploaded file.
+export const uploadSource = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch("/api/sources", z.object({ source: SourceDocumentSchema }), { method: "POST", body: form });
+};
+export const importDeck = (request: ImportDeckRequest) =>
+  apiFetch("/api/decks/import", ImportDeckResponseSchema, { method: "POST", body: JSON.stringify(request) });
 
 // US-16: deck images.
 const assetsUrl = (deckId: string) => `/api/decks/${encodeURIComponent(deckId)}/assets`;

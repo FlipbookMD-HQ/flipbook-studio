@@ -32,6 +32,17 @@ A deck's images live in its `assets/` folder (for a single-file deck, the `asset
 - **Slide editor → Insert image:** pick or upload an image, write its alt text, then **Insert** it at the cursor or **Replace image** to swap the slide's first image.
 - **Drop or paste** an image into the Markdown editor to upload it and insert it where it lands.
 
+## Start from a file
+
+**New deck → From a file** turns a document you already have into a deck. Pick or drop a Markdown (`.md`), text (`.txt`) or Word (`.docx`) file of up to 25 MB. Text files must be UTF-8; `.doc`, password-protected Word files and PDFs aren't supported.
+
+Studio reads the file first and shows what it found: the title, the number of sections, the images it will keep, and anything it leaves out (for example an EMF picture or an image linked from outside the file). Nothing is created yet. Then pick one:
+
+- **Import as is:** no model needed. Each `#`/`##` section becomes a slide, the words unchanged. Word headings, lists, bold and italic text, links and tables come across as Markdown, and embedded images go into the deck's `assets/` folder under the same rules as uploaded images. With a media kit, the deck opens with its blueprint violations listed, ready to fix.
+- **Convert with AI:** your local model reshapes the file into the kit's slide types, keeping its facts, order and language. It may only use the file's own images; any other image it invents is removed, and Studio says so.
+
+Imported decks are always folder decks. An uploaded file is kept in the workspace's `.flipbook-studio-tmp/` folder for 30 minutes, then deleted.
+
 ## Undo and redo
 
 **Undo** and **Redo** in the top bar reverse the changes Studio wrote to the open deck, one step at a time, and put back the exact earlier files: slide saves, added, deleted and reordered slides, accepted AI edits, and image uploads and deletes. Each button names the step it affects, for example "Undo: Delete slide 3". Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z do the same when the focus isn't in a text field or editor (there they undo your typing).

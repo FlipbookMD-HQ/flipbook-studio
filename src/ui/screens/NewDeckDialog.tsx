@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ApiRequestError, createDeck } from "../api";
-import type { CreateDeckRequest, GenerateDeckRequest, KitRef } from "../../shared/api";
-import { AiAction } from "../ai";
-import { GenerateProgress } from "./GenerateProgress";
+import { ApiRequestError, createDeck, importDeck, saveGeneratedDeck } from "../api";
+import type { CreateDeckRequest, GenerateDeckRequest, KitRef, SourceDocument } from "../../shared/api";
+import { AiAction, useLlmStatus } from "../ai";
+import { FromFile } from "./FromFile";
+import { GenerateProgress, useOpenDeck } from "./GenerateProgress";
 
 /** Suggests a deck name from the title: lowercase ASCII, digits and dashes, at most 60 characters. */
 export function slugify(title: string): string {
@@ -44,7 +45,14 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
   const [nameEdited, setNameEdited] = useState(false);
   const [kind, setKind] = useState<CreateDeckRequest["kind"]>("folder");
   const [group, setGroup] = useState("");
-  const [mode, setMode] = useState<"blank" | "ai">("blank");
+  const [mode, setMode] = useState<"blank" | "ai" | "file">("blank");
+  const [titleEdited, setTitleEdited] = useState(false);
+  // US-18: the uploaded file, what to do with it, and a deck kept for Save as after DECK_EXISTS.
+  const [fileSource, setFileSource] = useState<SourceDocument | null>(null);
+  const [fileAction, setFileAction] = useState<"import" | "ai">("import");
+  const [keptRun, setKeptRun] = useState<string | null>(null);
+  const llm = useLlmStatus();
+  const openDeck = useOpenDeck();
   const [sourceKind, setSourceKind] = useState<"topic" | "text">("topic");
   const [source, setSource] = useState("");
   const [language, setLanguage] = useState("");
@@ -70,11 +78,53 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
       navigate(`/decks/${deck.id}`);
     },
   });
-  const { fields, general } = fieldErrors(create.error);
+  const imported = useMutation({
+    mutationFn: async () => {
+      if (keptRun) {
+        const saved = await saveGeneratedDeck(keptRun, name);
+        return { deckId: saved.deckId, violations: [] as never[] };
+      }
+      return importDeck({ sourceId: fileSource!.sourceId, name, title, group: group || null });
+    },
+    onSuccess: async ({ deckId, violations }) => openDeck(deckId, violations),
+    onError: (error) => {
+      if (!(error instanceof ApiRequestError)) return;
+      const runId = error.error.details?.runId;
+      if (error.error.code === "DECK_EXISTS" && typeof runId === "string") setKeptRun(runId);
+      if (error.error.code === "SOURCE_EXPIRED") setFileSource(null);
+    },
+  });
+  const { fields, general } = fieldErrors(mode === "file" ? imported.error : create.error);
+
+  /** A new file fills in the title and name, unless the user already typed them. */
+  const chooseSource = (next: SourceDocument | null) => {
+    setFileSource(next);
+    setKeptRun(null);
+    imported.reset();
+    if (!next) return;
+    if (!titleEdited) setTitle(next.title.slice(0, 120));
+    if (!nameEdited) setName(slugify(titleEdited ? title : next.title) || "imported-deck");
+  };
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (mode === "blank") return create.mutate({ name, title, kind, group: group || null });
+    if (mode === "file") {
+      if (!fileSource) return;
+      if (fileAction === "import") return imported.mutate();
+      return setRun({
+        key: Date.now(),
+        controller: new AbortController(),
+        request: {
+          name,
+          title,
+          kind: "folder",
+          group: group || null,
+          source: { sourceId: fileSource.sourceId },
+          ...(language.trim() ? { language: language.trim() } : {}),
+        },
+      });
+    }
     if (!source.trim()) return;
     setRun({
       key: Date.now(),
@@ -105,7 +155,7 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
   return (
     <dialog
       ref={dialog}
-      className={mode === "ai" ? "dialog wide" : "dialog"}
+      className={mode === "blank" ? "dialog" : "dialog wide"}
       aria-labelledby="new-deck-title"
       onClose={onClose}
       onCancel={(event) => {
@@ -132,6 +182,14 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
           >
             Generate with AI
           </AiAction>
+          <button
+            type="button"
+            aria-pressed={mode === "file"}
+            disabled={running}
+            onClick={() => setMode("file")}
+          >
+            From a file
+          </button>
         </div>
         {run ? (
           <p className="run-summary">
@@ -139,6 +197,9 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
           </p>
         ) : null}
         <fieldset className="plain" disabled={running} hidden={running}>
+          {mode === "file" ? (
+            <FromFile source={fileSource} onSource={chooseSource} disabled={imported.isPending} />
+          ) : null}
           <label className="field">
             <span>Title</span>
             <input
@@ -150,6 +211,7 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
               aria-invalid={Boolean(fields.title)}
               onChange={(event) => {
                 setTitle(event.target.value);
+                setTitleEdited(true);
                 if (!nameEdited) setName(slugify(event.target.value));
               }}
             />
@@ -181,7 +243,7 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
             ) : null}
           </label>
 
-          <fieldset className="field">
+          <fieldset className="field" hidden={mode === "file"}>
             <legend>Kind</legend>
             <label className="choice">
               <input
@@ -207,7 +269,10 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
             <legend>Media kit</legend>
             <label className="choice">
               <input type="radio" name="group" checked={group === ""} onChange={() => setGroup("")} />
-              None <small className="hint">a blank deck with one slide</small>
+              None{" "}
+              <small className="hint">
+                {mode === "file" ? "no blueprint: one slide per section" : "a blank deck with one slide"}
+              </small>
             </label>
             {kits.map((kit) => (
               <label className="choice" key={`${kit.scope}:${kit.name}`}>
@@ -224,6 +289,59 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
             ))}
             {fields.group ? <small className="field-error">{fields.group}</small> : null}
           </fieldset>
+
+          {mode === "file" ? (
+            <fieldset className="field">
+              <legend>Make the deck</legend>
+              <label className="choice">
+                <input
+                  type="radio"
+                  name="file-action"
+                  checked={fileAction === "import"}
+                  onChange={() => setFileAction("import")}
+                />
+                Import as is{" "}
+                <small className="hint">one slide per section, the words unchanged; no model needed</small>
+              </label>
+              <label className="choice">
+                <input
+                  type="radio"
+                  name="file-action"
+                  checked={fileAction === "ai"}
+                  disabled={!llm.configured}
+                  onChange={() => setFileAction("ai")}
+                />
+                Convert with AI{" "}
+                <small className="hint">
+                  {llm.configured
+                    ? "your local model fits it to the kit; facts, order and language are kept"
+                    : "Connect a model in Settings"}
+                </small>
+              </label>
+              {fileAction === "import" && group ? (
+                <p className="notice" role="note">
+                  Import as is won&apos;t follow {group}&apos;s rules. The deck opens with its blueprint
+                  violations listed, ready to fix.
+                </p>
+              ) : null}
+              {fileAction === "ai" ? (
+                <label className="field">
+                  <span>Language (optional)</span>
+                  <input
+                    value={language}
+                    maxLength={60}
+                    placeholder="Same as the file"
+                    onChange={(event) => setLanguage(event.target.value)}
+                  />
+                </label>
+              ) : null}
+              {keptRun ? (
+                <p className="notice" role="note">
+                  The deck is ready. Pick another name to save it.
+                </p>
+              ) : null}
+            </fieldset>
+          ) : null}
 
           {mode === "ai" ? (
             <fieldset className="field">
@@ -310,6 +428,24 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
           {mode === "blank" ? (
             <button type="submit" className="primary" disabled={create.isPending}>
               {create.isPending ? "Creating…" : "Create deck"}
+            </button>
+          ) : mode === "file" ? (
+            <button
+              type="submit"
+              className="primary"
+              disabled={
+                running || imported.isPending || !fileSource || (fileAction === "ai" && !llm.configured)
+              }
+            >
+              {imported.isPending
+                ? "Importing…"
+                : running
+                  ? "Generating…"
+                  : keptRun
+                    ? "Save as"
+                    : fileAction === "import"
+                      ? "Import"
+                      : "Convert"}
             </button>
           ) : (
             <button type="submit" className="primary" disabled={running || !source.trim()}>
