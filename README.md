@@ -12,6 +12,7 @@ What Studio does today:
 - Edit themes, templates (on the 3×3 grid), blueprints and media kits.
 - Present a deck and export it as a PNG carousel or an MP4, like the CLI.
 - Start a deck from a Markdown, text or Word file.
+- Duplicate a deck, theme, template, blueprint or media kit to try a variation.
 - Optional AI from a model on your machine (Ollama, LM Studio or any OpenAI-compatible server): rewrite a slide, generate a deck, draft a kit piece, and chat about the open deck. Every AI edit is a proposal you accept or reject.
 
 Studio builds on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core), the same library as the CLI.
@@ -59,6 +60,12 @@ Studio reads the file first and shows what it found: the title, the number of se
 - **Convert with AI:** your local model reshapes the file into the kit's slide types, keeping its facts, order and language. It may only use the file's own images; any other image it invents is removed, and Studio says so.
 
 Imported decks are always folder decks. An uploaded file is kept in the workspace's `.flipbook-studio-tmp/` folder for 30 minutes, then deleted.
+
+## Duplicate decks and kits
+
+- **Decks:** **Duplicate** on a deck's card or on the deck screen asks for a title and name (suggested as `<title> (copy)` and `<name>-copy`) and saves the copy next to the original, then opens it. A folder deck is copied whole, except exports in `dist/`, hidden files such as `.git`, and symlinks, which Studio lists after opening the copy. A single-file deck becomes a new `.slide.md` in the same folder and shares that folder's `assets/`. Only the title differs; the original is never changed.
+- **Kits:** **Duplicate** on a library or built-in theme or media kit, or on a library template or blueprint (in its list or its editor), saves a copy in your library and opens it in its editor. The built-in templates (`flow`, `cover`, `summary`) live in code and can't be duplicated.
+- A taken name is refused and nothing is written. A duplicate isn't an undo step: delete the copy to go back.
 
 ## Undo and redo
 

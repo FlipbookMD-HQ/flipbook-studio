@@ -18,7 +18,7 @@ import {
   loadPresentation,
   readKit,
   renderSampleDocument,
-  copyGroup as coreCopyGroup,
+  copyKit as coreCopyKit,
   findDecksUsingGroup,
   renameGroup as coreRenameGroup,
   writeKit,
@@ -262,32 +262,41 @@ async function previewGroup(request: { source: string; name?: string }): Promise
   }
 }
 
-/** POST /api/kits/group/:name/copy: copies a built-in or library group into the library. */
-export async function copyGroup(
+const KIND_LABELS: Record<KitKind, string> = {
+  theme: "theme",
+  template: "template",
+  blueprint: "blueprint",
+  group: "media kit",
+};
+
+/**
+ * POST /api/kits/:kind/:name/copy (US-20, D27), and the US-10 group route: copies a built-in or
+ * library piece into the library as `toName` and returns the copy.
+ */
+export async function copyKit(
   root: string,
+  kind: KitKind,
   name: string,
   request: { toName: string; scope?: "library" | "builtin" },
 ): Promise<KitDoc> {
-  let scope = request.scope;
-  if (!scope) {
-    scope = "builtin";
-    try {
-      await readKit({ kind: "group", name, scope: "library" });
-      scope = "library";
-    } catch {
-      // Not in the library: copy the built-in.
-    }
-  }
+  const label = KIND_LABELS[kind];
   try {
-    await coreCopyGroup({ name, scope }, request.toName);
+    await coreCopyKit({ kind, name, scope: request.scope }, request.toName);
   } catch (error) {
     kitFailure(
       error,
-      error instanceof KitNotFoundError ? `media kit "${name}"` : `A media kit named "${request.toName}"`,
+      error instanceof KitNotFoundError ? `${label} "${name}"` : `A ${label} named "${request.toName}"`,
     );
   }
-  return doc(root, "group", request.toName, "library");
+  return doc(root, kind, request.toName, "library");
 }
+
+/** POST /api/kits/group/:name/copy (US-10): kept as an alias of the generic copy. */
+export const copyGroup = (
+  root: string,
+  name: string,
+  request: { toName: string; scope?: "library" | "builtin" },
+) => copyKit(root, "group", name, request);
 
 /** POST /api/kits/group/:name/rename: renames a library group and lists the decks still on the old name. */
 export async function renameGroup(

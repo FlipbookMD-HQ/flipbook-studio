@@ -17,6 +17,7 @@ import { ApiRequestError, createKit, getKit, getWorkspace, previewKit, updateKit
 import { GridEditor } from "./GridEditor";
 import { ErrorNotice, Shell } from "./Shell";
 import { templatePath } from "./TemplatesScreen";
+import { DuplicateKitButton } from "./Duplicate";
 import { DraftKitButton, kitDraftOf } from "./DraftKitDialog";
 
 const DEFAULT: TemplateFields = {
@@ -266,6 +267,9 @@ export function TemplateEditor() {
       actions={
         <>
           {!existing ? <DraftKitButton kind="template" /> : null}
+          {existing?.scope === "library" ? (
+            <DuplicateKitButton kind="template" name={existing.name} scope="library" className="" />
+          ) : null}
           {draft && dirty ? <span className="muted">Unsaved draft</span> : null}
           {reason && (existing ? dirty : true) ? (
             <span className="muted" data-testid="save-reason">

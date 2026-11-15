@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ApiRequestError, getWorkspace } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 import { DraftKitButton } from "./DraftKitDialog";
+import { DuplicateKitButton } from "./Duplicate";
 
 export const themePath = (scope: string, name: string) => `/kits/themes/${scope}/${encodeURIComponent(name)}`;
 
@@ -31,12 +32,14 @@ export function ThemesScreen() {
         label: theme.name,
         badge: "Library",
         to: themePath("library", theme.name),
+        copy: { name: theme.name, scope: "library" as const },
       })),
     ...decks.map((deck) => ({
       key: `d-${deck.id}`,
       label: `${deck.title} (presentation.css)`,
       badge: "Deck",
       to: themePath("deck", deck.id),
+      copy: null,
     })),
     ...themes
       .filter((theme) => theme.scope === "builtin")
@@ -45,6 +48,7 @@ export function ThemesScreen() {
         label: theme.name,
         badge: "Built-in",
         to: themePath("builtin", theme.name),
+        copy: { name: theme.name, scope: "builtin" as const },
       })),
   ];
   return (
@@ -60,6 +64,9 @@ export function ThemesScreen() {
             <li key={row.key}>
               <Link to={row.to}>{row.label}</Link>{" "}
               <span className={`badge badge-${row.badge.toLowerCase()}`}>{row.badge}</span>
+              {row.copy ? (
+                <DuplicateKitButton kind="theme" name={row.copy.name} scope={row.copy.scope} />
+              ) : null}
             </li>
           ))}
         </ul>
