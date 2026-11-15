@@ -18,6 +18,8 @@ import {
   SettingsPatchSchema,
   RewriteRequestSchema,
   GenerateDeckRequestSchema,
+  ImportDeckRequestSchema,
+  SOURCE_MAX_BYTES,
   DraftKitRequestSchema,
   ChatRequestSchema,
   SaveAsRequestSchema,
@@ -60,6 +62,8 @@ import {
 } from "./decks.js";
 import { resolveInside } from "./paths.js";
 import { scanWorkspace } from "./workspace.js";
+import { importSource } from "./import.js";
+import { SourceStore } from "./sources.js";
 import { ProposalStore, applyProposal } from "./ai/proposals.js";
 import { prepareRewrite, runRewrite } from "./ai/rewrite.js";
 import { GenerationRuns, prepareGenerate, runGenerate } from "./ai/generate.js";
@@ -70,6 +74,8 @@ import { ChatSessionStore, runChat } from "./ai/chat.js";
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Room for multipart boundaries and headers around an 8 MB image. */
 export const UPLOAD_OVERHEAD_BYTES = 64 * 1024;
+/** How often expired uploaded sources are deleted (D24). */
+const SOURCE_SWEEP_MS = 5 * 60 * 1000;
 
 export const UI_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; " +
@@ -146,6 +152,9 @@ export function createApp(options: AppOptions) {
   const llmProvider = options.llmProvider ?? defaultProviderFactory;
   const proposals = new ProposalStore();
   const generations = new GenerationRuns();
+  const sources = new SourceStore();
+  const sweep = setInterval(() => void sources.sweep(options.workspace).catch(() => {}), SOURCE_SWEEP_MS);
+  sweep.unref();
   const chats = new ChatSessionStore();
   const journal = new DeckJournal();
   /** The saved model and a provider for it, or 409 LLM_NOT_CONFIGURED (always before streaming). */
@@ -219,11 +228,19 @@ export function createApp(options: AppOptions) {
       throw new StudioError(413, "ASSET_TOO_LARGE", "Images can be at most 8 MB.");
     },
   });
-  api.use("*", (c, next) =>
-    c.req.method === "POST" && /^\/api\/decks\/[^/]+\/assets$/.test(c.req.path)
-      ? uploadBodies(c, next)
-      : smallBodies(c, next),
-  );
+  // D24: an uploaded source document (US-18) is the other one, up to 25 MB.
+  const sourceBodies = bodyLimit({
+    maxSize: SOURCE_MAX_BYTES + UPLOAD_OVERHEAD_BYTES,
+    onError: () => {
+      throw new StudioError(413, "SOURCE_TOO_LARGE", "Files can be at most 25 MB.");
+    },
+  });
+  api.use("*", (c, next) => {
+    if (c.req.method === "POST" && /^\/api\/decks\/[^/]+\/assets$/.test(c.req.path))
+      return uploadBodies(c, next);
+    if (c.req.method === "POST" && c.req.path === "/api/sources") return sourceBodies(c, next);
+    return smallBodies(c, next);
+  });
   api.get("/workspace", async (c) => c.json(await scanWorkspace(options.workspace, options.library)));
   api.get("/decks/:id", async (c) => c.json(await deckDetail(options.workspace, c.req.param("id"))));
   api.post("/decks/:id/preview", async (c) => {
@@ -265,6 +282,25 @@ export function createApp(options: AppOptions) {
     });
   }
   // US-16: deck images.
+  // US-18: start a deck from an uploaded file.
+  api.post("/sources", async (c) => {
+    const form = await c.req.formData().catch(() => {
+      throw new StudioError(422, "VALIDATION_FAILED", "Send the file as a multipart field named file.");
+    });
+    const file = form.get("file");
+    if (!(file instanceof File))
+      throw new StudioError(422, "VALIDATION_FAILED", "Send the file as a multipart field named file.", {
+        details: { field: "file" },
+      });
+    if (file.size > SOURCE_MAX_BYTES)
+      throw new StudioError(413, "SOURCE_TOO_LARGE", "Files can be at most 25 MB.");
+    const source = await sources.save(options.workspace, file.name, Buffer.from(await file.arrayBuffer()));
+    return c.json({ source }, 201);
+  });
+  api.post("/decks/import", async (c) => {
+    const request = ImportDeckRequestSchema.parse(await jsonBody(c));
+    return c.json(await importSource(options.workspace, sources, generations, request, log), 201);
+  });
   api.get("/decks/:id/assets", async (c) => c.json(await deckAssets(options.workspace, c.req.param("id"))));
   api.post("/decks/:id/assets", async (c) => {
     const body = await c.req.parseBody().catch(() => {
@@ -374,11 +410,17 @@ export function createApp(options: AppOptions) {
   api.post("/ai/generate-deck", async (c) => {
     const request = GenerateDeckRequestSchema.parse(await jsonBody(c));
     const { llm, provider } = await configuredLlm();
-    const prepared = await prepareGenerate(options.workspace, request);
+    const prepared = await prepareGenerate(options.workspace, request, sources);
     return sseTask(
       c.req.raw,
       (context) =>
-        runGenerate(context, options.workspace, request, prepared, { provider, llm, runs: generations, log }),
+        runGenerate(context, options.workspace, request, prepared, {
+          provider,
+          llm,
+          runs: generations,
+          sources,
+          log,
+        }),
       { log, baseUrl: llm.baseUrl, model: llm.model },
     );
   });
@@ -551,6 +593,7 @@ export function createApp(options: AppOptions) {
 
   /** Stops player servers and cancels running exports (Studio is shutting down). */
   const shutdown = async () => {
+    clearInterval(sweep);
     jobs.cancelAll();
     await players.closeAll();
   };

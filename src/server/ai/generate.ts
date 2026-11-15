@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   TEMPLATES,
-  atomicWrite,
   createDeck,
   hashBytes,
   insertSlide,
@@ -14,6 +13,7 @@ import {
   removeSlide,
   reorderSlides,
   updateSlide,
+  writeDeckAsset,
   type Blueprint,
   type SlideDraft,
   type Violation,
@@ -23,8 +23,19 @@ import { GENERATE_TEXT_LIMIT, type GenerateDeckRequest, type LlmSettings } from 
 import { slideIdAt } from "../decks.js";
 import { StudioError } from "../errors.js";
 import { LlmError, type ChatMessage, type LlmProvider } from "../llm/provider.js";
-import { encodeDeckId } from "../paths.js";
+import type { LoadedSource, SourceStore } from "../sources.js";
 import { TMP_DIR, type DeckEntry } from "../workspace.js";
+import {
+  assertFree,
+  entryName,
+  ignoreGenerationTemp,
+  publish,
+  removeRun,
+  type GenerationRuns,
+} from "../temp-decks.js";
+
+// Kept here too: the launcher and tests import them from generate.
+export { GenerationRuns, ignoreGenerationTemp, resetGenerationTemp } from "../temp-decks.js";
 import { contextTokens } from "./budget.js";
 import { JsonLinesParser, SlideLineSchema, type SlideLine } from "./jsonl.js";
 import {
@@ -39,114 +50,29 @@ import { aiDebug, structuredCall } from "./structured.js";
 const MAX_SLIDES = 100;
 const SEQUENCE_CODES = new Set(["ORDER", "MISSING_TYPE"]);
 
-/** Empties the generation temp folder (D17): Studio calls it at startup, so a crash leaves nothing behind. */
-export async function resetGenerationTemp(root: string): Promise<void> {
-  await fs.rm(path.join(root, TMP_DIR), { recursive: true, force: true });
-}
-
-/** Adds the temp folder to the workspace's .gitignore when the workspace is a git repo and the line is missing. */
-export async function ignoreGenerationTemp(root: string): Promise<void> {
-  const isRepo = await fs.stat(path.join(root, ".git")).then(
-    () => true,
-    () => false,
-  );
-  if (!isRepo) return;
-  const file = path.join(root, ".gitignore");
-  const bytes = await fs.readFile(file).catch(() => null);
-  const text = bytes?.toString("utf8") ?? "";
-  if (text.split(/\r?\n/).some((line) => line.trim().replace(/^\//, "").replace(/\/$/, "") === TMP_DIR))
-    return;
-  const next = `${text}${text && !text.endsWith("\n") ? "\n" : ""}${TMP_DIR}/\n`;
-  await atomicWrite(file, next, { baseHash: bytes ? hashBytes(bytes) : null, roots: [root] });
-}
-
-/** Refuses a name taken in `dir`, including one differing only in case. */
-async function assertFree(dir: string, entry: string, runId?: string): Promise<void> {
-  const entries = await fs.readdir(dir);
-  if (entries.some((name) => name.toLowerCase() === entry.toLowerCase())) {
-    throw new StudioError(409, "DECK_EXISTS", `A deck named ${entry} already exists. Pick another name.`, {
-      path: entry,
-      ...(runId ? { details: { runId } } : {}),
-    });
-  }
-}
-
-/** Removes a run folder, and the temp folder too once it's empty, so a cancel leaves the workspace as it was. */
-async function removeRun(dir: string) {
-  await fs.rm(dir, { recursive: true, force: true });
-  await fs.rmdir(path.dirname(dir)).catch(() => {});
-}
-
-const entryName = (name: string, kind: "folder" | "single") =>
-  kind === "folder" ? name : `${name}.slide.md`;
-
-interface Run {
-  dir: string;
-  deck: DeckEntry;
-}
-
-/** Generated decks waiting for a Save as after DECK_EXISTS (memory only; the folder goes at the next start). */
-export class GenerationRuns {
-  private readonly runs = new Map<string, Run>();
-
-  keep(id: string, run: Run) {
-    this.runs.set(id, run);
-  }
-
-  /** POST /api/ai/generate-deck/:runId/save-as: publishes the kept deck under another name. */
-  async saveAs(root: string, runId: string, name: string): Promise<{ deckId: string }> {
-    const run = this.runs.get(runId);
-    if (!run)
-      throw new StudioError(
-        404,
-        "PROPOSAL_NOT_FOUND",
-        "That generated deck no longer exists. Generate it again.",
-      );
-    const deckId = await publish(root, run.deck, name);
-    this.runs.delete(runId);
-    await removeRun(run.dir);
-    return { deckId };
-  }
-}
-
-/**
- * Moves a finished temp deck into the workspace without replacing anything: a folder is renamed,
- * a single file is hard-linked then unlinked (link fails if the name exists).
- */
-async function publish(root: string, deck: DeckEntry, name: string, runId?: string): Promise<string> {
-  const entry = entryName(name, deck.kind);
-  await assertFree(root, entry, runId);
-  const target = path.join(root, entry);
-  try {
-    if (deck.kind === "folder") await fs.rename(deck.absolute, target);
-    else {
-      await fs.link(deck.absolute, target);
-      await fs.unlink(deck.absolute);
-    }
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "EEXIST" || code === "ENOTEMPTY")
-      throw new StudioError(409, "DECK_EXISTS", `A deck named ${entry} already exists. Pick another name.`, {
-        path: entry,
-        ...(runId ? { details: { runId } } : {}),
-      });
-    throw error;
-  }
-  deck.absolute = target;
-  deck.relative = entry;
-  return encodeDeckId(entry);
-}
-
 export interface PreparedGeneration {
   blueprint: Blueprint | null;
   templates: string[];
+  /** An uploaded file (US-18), read before streaming so an expired one answers with plain JSON. */
+  source?: LoadedSource;
 }
 
 /** The checks that answer before streaming: size, name, kit. */
 export async function prepareGenerate(
   root: string,
   request: GenerateDeckRequest,
+  sources?: SourceStore,
 ): Promise<PreparedGeneration> {
+  let source: LoadedSource | undefined;
+  if ("sourceId" in request.source) {
+    if (request.kind !== "folder")
+      throw new StudioError(422, "VALIDATION_FAILED", "A deck from a file is always a folder deck.", {
+        details: { fields: [{ path: "kind", message: "Use folder." }] },
+      });
+    if (!sources)
+      throw new StudioError(404, "SOURCE_EXPIRED", "That file is no longer available. Pick it again.");
+    source = await sources.get(root, request.source.sourceId);
+  }
   if ("text" in request.source && request.source.text.length > GENERATE_TEXT_LIMIT) {
     throw new StudioError(
       413,
@@ -155,7 +81,7 @@ export async function prepareGenerate(
     );
   }
   await assertFree(root, entryName(request.name, request.kind));
-  if (!request.group) return { blueprint: null, templates: Object.keys(TEMPLATES) };
+  if (!request.group) return { blueprint: null, templates: Object.keys(TEMPLATES), source };
   let group;
   try {
     group = await loadGroup(request.group);
@@ -168,6 +94,7 @@ export async function prepareGenerate(
     return {
       blueprint: normalizeBlueprint(group.blueprint, group.templates),
       templates: [...Object.keys(group.templates), ...Object.keys(TEMPLATES)],
+      source,
     };
   } catch (error) {
     throw new StudioError(422, "KIT_INVALID", (error as Error).message);
@@ -199,8 +126,27 @@ function toDraft(line: SlideLine, deck: DeckEntry): SlideDraft {
   };
 }
 
+// US-18: with an uploaded file, slides may use only its images. Keyed by the temp deck.
+const allowedImages = new WeakMap<DeckEntry, { paths: Set<string>; removed: number }>();
+const LOCAL_IMAGE = /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+
+/** Removes local image references that aren't the file's own images. */
+function onlyAllowedImages(deck: DeckEntry, draft: SlideDraft): SlideDraft {
+  const allowed = allowedImages.get(deck);
+  if (!allowed) return draft;
+  const markdown = draft.markdown.replace(LOCAL_IMAGE, (match, href: string) => {
+    if (/^(?:https?:|data:)/i.test(href) || allowed.paths.has(href)) return match;
+    allowed.removed += 1;
+    return "";
+  });
+  return markdown === draft.markdown
+    ? draft
+    : { ...draft, markdown: markdown.replace(/\n{3,}/g, "\n\n").trim() };
+}
+
 /** Appends a slide; a template core doesn't know is dropped rather than losing the slide. */
-async function append(deck: DeckEntry, draft: SlideDraft): Promise<SlideDraft> {
+async function append(deck: DeckEntry, given: SlideDraft): Promise<SlideDraft> {
+  const draft = onlyAllowedImages(deck, given);
   const { ids } = await evaluate(deck);
   try {
     await insertSlide(deck.absolute, ids.at(-1) ?? null, draft, await structureHash(deck));
@@ -221,7 +167,8 @@ async function removeAt(deck: DeckEntry, positions: number[]) {
   }
 }
 
-async function update(deck: DeckEntry, id: string, draft: SlideDraft) {
+async function update(deck: DeckEntry, id: string, given: SlideDraft) {
+  const draft = onlyAllowedImages(deck, given);
   const read = await readSlide(deck.absolute, id);
   try {
     await updateSlide(deck.absolute, id, draft, read.hash);
@@ -237,6 +184,8 @@ export interface GenerateDeps {
   provider: LlmProvider;
   llm: LlmSettings & { model: string };
   runs: GenerationRuns;
+  /** Consumes an uploaded file once its deck is published (US-18). */
+  sources?: SourceStore;
   log?: (line: string) => void;
 }
 
@@ -300,6 +249,21 @@ export async function runGenerate(
     };
     const placeholders = (await evaluate(deck)).ids.length;
 
+    // An uploaded file: its images go into the deck first, under the upload rules (D19).
+    let source: { text: string } | { topic: string } =
+      "sourceId" in request.source ? { text: "" } : request.source;
+    const images: string[] = [];
+    if (prepared.source) {
+      let text = prepared.source.markdown;
+      for (const image of prepared.source.images) {
+        const stored = await writeDeckAsset(deck.absolute, image.fileName, image.bytes);
+        text = text.split(`](${image.fileName})`).join(`](${stored.path})`);
+        images.push(stored.path);
+      }
+      source = { text };
+      allowedImages.set(deck, { paths: new Set(images), removed: 0 });
+    }
+
     // 1. Stream the slides.
     const tokens = await contextTokens(deps.provider, deps.llm.baseUrl, deps.llm.model, signal);
     const budget = Math.floor(tokens * 0.8 * 4 * 0.6);
@@ -308,7 +272,8 @@ export async function runGenerate(
         title: request.title,
         blueprint: prepared.blueprint,
         templates: prepared.templates,
-        source: request.source,
+        source,
+        images,
         language: request.language,
       },
       budget - 3000,
@@ -339,6 +304,12 @@ export async function runGenerate(
       state = await evaluate(deck);
     }
 
+    const removedImages = allowedImages.get(deck)?.removed ?? 0;
+    if (removedImages)
+      context.send("notice", {
+        message: `Removed ${removedImages} image reference(s) that weren't in the file`,
+      });
+
     // 3. Publish.
     if (signal.aborted) throw cancelled();
     let deckId: string;
@@ -348,9 +319,11 @@ export async function runGenerate(
       if (error instanceof StudioError && error.code === "DECK_EXISTS") {
         keep = true;
         deps.runs.keep(runId, { dir, deck });
+        if ("sourceId" in request.source) await deps.sources?.consume(root, request.source.sourceId);
       }
       throw error;
     }
+    if ("sourceId" in request.source) await deps.sources?.consume(root, request.source.sourceId);
     return { deckId, violations: state.violations };
   } finally {
     if (!keep) await removeRun(dir);

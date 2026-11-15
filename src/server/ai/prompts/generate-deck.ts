@@ -8,6 +8,8 @@ export interface GenerateContext {
   /** Template names the slides may use. */
   templates: string[];
   source: { topic: string } | { text: string };
+  /** Image paths from an uploaded file (US-18): the only local images a slide may use. */
+  images?: string[];
   language?: string;
 }
 
@@ -91,6 +93,10 @@ export function generateParts(context: GenerateContext): {
     sections.push(
       `Turn the source text into the deck. Keep its facts, its order and its language; don't add facts that aren't in it. ${language}`,
     );
+    if (context.images?.length)
+      sections.push(
+        `The source text places these images: ${context.images.join(", ")}. Put each one on the slide that covers the text around it, as ![short description](path) with exactly that path. Don't use any other image path.`,
+      );
     return { head: sections.join("\n\n"), source: context.source.text, sourceKind: "text" };
   }
   sections.push(`Write the deck about the topic. ${language}`);

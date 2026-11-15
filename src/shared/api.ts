@@ -43,6 +43,11 @@ export const ERROR_CODES = [
   "UNDO_CONFLICT",
   "NOTHING_TO_UNDO",
   "NOTHING_TO_REDO",
+  "SOURCE_TOO_LARGE",
+  "SOURCE_TYPE",
+  "SOURCE_ENCODING",
+  "SOURCE_UNREADABLE",
+  "SOURCE_EXPIRED",
   "INTERNAL",
 ] as const;
 
@@ -510,6 +515,55 @@ export const RewriteRequestSchema = z.object({
 });
 export type RewriteRequest = z.infer<typeof RewriteRequestSchema>;
 
+// US-18: start a deck from an uploaded file (tech-spec D22-D25).
+export const SOURCE_MAX_BYTES = 25 * 1024 * 1024;
+export const SOURCE_EXTENSIONS = [".md", ".markdown", ".txt", ".docx"] as const;
+export const SourceIdSchema = z.string().regex(/^[0-9a-f-]{36}$/, "Pick the file again.");
+export const DroppedSchema = z.object({
+  kind: z.enum(["image", "html", "linked-image", "relative-image"]),
+  reason: z.enum(["type", "size", "limit", "not-embedded", "not-uploaded", "removed"]),
+  count: z.number().int().positive(),
+  /** An image format ("EMF") or a dropped href. */
+  detail: z.string().optional(),
+});
+export type Dropped = z.infer<typeof DroppedSchema>;
+export const SourceImageSchema = z.object({
+  /** The name the source text uses for it: "image1.png". */
+  id: z.string(),
+  name: z.string(),
+  bytes: z.number().int().nonnegative(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  /** A data: URI for images up to 256 kB, so the preview needs no extra route. */
+  thumbnail: z.string().nullable(),
+});
+export const SourceDocumentSchema = z.object({
+  sourceId: SourceIdSchema,
+  fileName: z.string(),
+  format: z.enum(["md", "txt", "docx"]),
+  title: z.string(),
+  chars: z.number().int().nonnegative(),
+  sections: z.number().int().nonnegative(),
+  /** The images that will be imported (checked like uploads, D19). */
+  images: z.array(SourceImageSchema),
+  dropped: z.array(DroppedSchema),
+  expiresAt: z.string(),
+});
+export type SourceDocument = z.infer<typeof SourceDocumentSchema>;
+export const ImportDeckRequestSchema = z.object({
+  sourceId: SourceIdSchema,
+  name: z.string().regex(DECK_NAME, "Use 1-60 lowercase letters, digits or dashes."),
+  title: z.string().trim().min(1, "Use 1-120 characters.").max(120, "Use 1-120 characters."),
+  group: z.string().trim().min(1).nullable(),
+});
+export type ImportDeckRequest = z.infer<typeof ImportDeckRequestSchema>;
+export const ImportDeckResponseSchema = z.object({
+  deckId: z.string(),
+  dropped: z.array(DroppedSchema),
+  violations: z.array(ViolationSchema),
+});
+export type ImportDeckResponse = z.infer<typeof ImportDeckResponseSchema>;
+
 // US-13: generate a deck with AI.
 export const GENERATE_TEXT_LIMIT = 200_000;
 export const GenerateDeckRequestSchema = CreateDeckRequestSchema.extend({
@@ -517,6 +571,8 @@ export const GenerateDeckRequestSchema = CreateDeckRequestSchema.extend({
   source: z.union([
     z.object({ topic: z.string().trim().min(1, "Describe the topic.").max(2000) }).strict(),
     z.object({ text: z.string().trim().min(1, "Paste some text.") }).strict(),
+    /** A file uploaded with POST /api/sources (US-18); the deck must be a folder (D25). */
+    z.object({ sourceId: SourceIdSchema }).strict(),
   ]),
   language: z.string().trim().min(1).max(60).optional(),
 });
