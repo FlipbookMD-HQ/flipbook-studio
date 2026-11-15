@@ -37,7 +37,7 @@ const THEME_NAME = /^[a-z0-9-]{1,60}$/;
 const YAML_OPTIONS = { aliasDuplicateObjects: false, lineWidth: 0 } as const;
 
 // Loose shapes: core's normalizers do the real validation and their messages go back to the model.
-const Mapping = z.record(z.unknown());
+const Mapping = z.record(z.string(), z.unknown());
 const BlueprintOutput = z.object({ types: Mapping, pages: z.array(z.unknown()).min(1) }).passthrough();
 const KIT_OUTPUTS = {
   theme: z.object({ css: z.string().trim().min(1, "css is empty") }),
@@ -350,7 +350,7 @@ export async function runDraftKit(
       provider: deps.provider,
       model: deps.llm.model,
       messages: draftKitMessages(promptContext),
-      schema: KIT_OUTPUTS[kind] as z.ZodType<KitOutput<K>>,
+      schema: KIT_OUTPUTS[kind] as unknown as z.ZodType<KitOutput<K>>,
       jsonSchema: DRAFT_KIT_JSON_SCHEMAS[kind],
       temperature: deps.llm.temperature,
       signal: context.signal,

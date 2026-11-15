@@ -38,7 +38,7 @@ describe("structuredCall", () => {
     });
     expect(await call(provider)).toEqual({ markdown: "# Fixed" });
     const retry = provider.requests[1]!.messages.at(-1)!.content;
-    expect(retry).toMatch(/markdown: Required/);
+    expect(retry).toMatch(/markdown: Invalid input: expected string, received undefined/);
   });
 
   it("fails with LLM_BAD_OUTPUT after two invalid answers", async () => {
