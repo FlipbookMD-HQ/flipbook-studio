@@ -2,7 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  AI_TASKS,
   API_KEY_MASK,
+  type TaskModels,
   SettingsSchema,
   type LlmSettings,
   type Settings,
@@ -104,7 +106,7 @@ export class SettingsStore {
     if (patch.lastWorkspace !== undefined) next.lastWorkspace = patch.lastWorkspace;
     if (patch.llm === null) next.llm = null;
     else if (patch.llm) {
-      const { apiKey, ...rest } = patch.llm;
+      const { apiKey, taskModels, ...rest } = patch.llm;
       const base = this.settings.llm ?? (rest.baseUrl ? { baseUrl: rest.baseUrl, ...LLM_DEFAULTS } : null);
       if (!base)
         throw new StudioError(422, "VALIDATION_FAILED", "Set a base URL to connect an LLM.", {
@@ -113,6 +115,17 @@ export class SettingsStore {
       next.llm = { ...base, ...rest };
       // Left out, or the mask sent back: keep the key. null: clear it.
       if (apiKey !== undefined && apiKey !== API_KEY_MASK) next.llm.apiKey = apiKey;
+      // US-19 (D29): merge task models per key; null clears one, and an empty map is no map.
+      if (taskModels !== undefined) {
+        const merged: TaskModels = { ...(base.taskModels ?? {}) };
+        for (const task of AI_TASKS) {
+          const value = taskModels[task];
+          if (value === null) delete merged[task];
+          else if (value !== undefined) merged[task] = value;
+        }
+        if (Object.keys(merged).length) next.llm.taskModels = merged;
+        else delete next.llm.taskModels;
+      }
     }
     const valid = SettingsSchema.parse(next);
     await this.write(valid);

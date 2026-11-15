@@ -399,6 +399,35 @@ const httpUrl = z
   .trim()
   .url("Enter a full URL, such as http://127.0.0.1:11434/v1.")
   .refine((value) => /^https?:\/\//i.test(value), "Use an http:// or https:// URL.");
+// US-19 (D29): the AI tasks that can each have their own model.
+export const AI_TASKS = ["rewrite", "generate", "draft", "chat"] as const;
+export type AiTask = (typeof AI_TASKS)[number];
+/** How each task is named in Settings, AI panels and errors. */
+export const AI_TASK_LABELS: Record<AiTask, string> = {
+  rewrite: "Rewrite a slide",
+  generate: "Generate a deck",
+  draft: "Draft a kit piece",
+  chat: "Chat",
+};
+const MODEL_ID = z.string().trim().min(1, "Pick a model.").max(200);
+/** A model per AI task; a missing key uses the default `model`. */
+export const TaskModelsSchema = z.object({
+  rewrite: MODEL_ID.optional(),
+  generate: MODEL_ID.optional(),
+  draft: MODEL_ID.optional(),
+  chat: MODEL_ID.optional(),
+});
+export type TaskModels = z.infer<typeof TaskModelsSchema>;
+/** In PUT /api/settings: a model ID sets a task, null clears it, a key left out is kept. */
+const TaskModelsPatchSchema = z
+  .object({
+    rewrite: MODEL_ID.nullable().optional(),
+    generate: MODEL_ID.nullable().optional(),
+    draft: MODEL_ID.nullable().optional(),
+    chat: MODEL_ID.nullable().optional(),
+  })
+  .strict();
+export type TaskModelsPatch = z.infer<typeof TaskModelsPatchSchema>;
 export const LlmSettingsSchema = z.object({
   baseUrl: httpUrl,
   model: z.string().min(1).nullable(),
@@ -407,6 +436,7 @@ export const LlmSettingsSchema = z.object({
   temperature: z.number().min(0).max(2),
   timeoutMs: z.number().int().min(5_000).max(600_000),
   maxRepairRounds: z.number().int().min(0).max(3),
+  taskModels: TaskModelsSchema.optional(),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
 export const SettingsSchema = z.object({
@@ -418,7 +448,12 @@ export type Settings = z.infer<typeof SettingsSchema>;
 /** PUT /api/settings: a partial merge. `llm: null` removes the LLM; `apiKey: null` clears the key, leaving it out keeps it. */
 export const SettingsPatchSchema = z
   .object({
-    llm: LlmSettingsSchema.partial().strict().nullable().optional(),
+    llm: LlmSettingsSchema.omit({ taskModels: true })
+      .partial()
+      .extend({ taskModels: TaskModelsPatchSchema.optional() })
+      .strict()
+      .nullable()
+      .optional(),
     lastWorkspace: z.string().nullable().optional(),
   })
   .strict();
@@ -611,7 +646,12 @@ export const GenerateRepairEventSchema = z.object({
   violations: z.array(ViolationSchema),
 });
 export const GenerateNoticeEventSchema = z.object({ message: z.string() });
-export const GenerateDoneEventSchema = z.object({ deckId: z.string(), violations: z.array(ViolationSchema) });
+export const GenerateDoneEventSchema = z.object({
+  deckId: z.string(),
+  violations: z.array(ViolationSchema),
+  /** The model that ran (US-19). */
+  model: z.string().optional(),
+});
 export const AiFailedEventSchema = z.object({ error: ApiErrorSchema });
 
 // US-14: draft a kit piece with AI.
@@ -634,4 +674,8 @@ export const ChatRequestSchema = z.object({
   slideId: SlideIdSchema.optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
-export const ChatDoneEventSchema = z.object({ sessionId: z.string() });
+export const ChatDoneEventSchema = z.object({
+  sessionId: z.string(),
+  /** The model that ran (US-19). */
+  model: z.string().optional(),
+});

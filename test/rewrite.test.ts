@@ -114,7 +114,7 @@ describe("POST /api/ai/rewrite", () => {
           violations: [],
         }),
       ]);
-      expect(events.at(-1)).toEqual({ event: "done", data: {} });
+      expect(events.at(-1)).toEqual({ event: "done", data: { model: "stub-model" } });
       expect(await fs.readFile(file, "utf8")).toBe(before);
       const prompt = fake.requests[0]!.messages.at(-1)!.content;
       if (instruction.kind === "translate") expect(prompt).toContain("Portuguese");
@@ -193,7 +193,7 @@ describe("POST /api/ai/rewrite", () => {
     const { rewrite } = await setup(reply("# Cover\n\nOur product saves time."));
     const events = await sseEvents(await rewrite({ kind: "shorten" }));
     expect(events.map((event) => event.event)).not.toContain("proposal");
-    expect(events.at(-1)).toEqual({ event: "done", data: { noChange: true } });
+    expect(events.at(-1)).toEqual({ event: "done", data: { noChange: true, model: "stub-model" } });
   });
 
   it("ends with failed LLM_BAD_OUTPUT on empty output and leaves the slide alone", async () => {

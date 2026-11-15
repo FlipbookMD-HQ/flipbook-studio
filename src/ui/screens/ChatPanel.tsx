@@ -16,6 +16,8 @@ type Entry =
       closed?: boolean;
       error: ApiError | null;
       done: boolean;
+      /** The model that answered (US-19). */
+      model?: string;
     };
 
 interface ChatState {
@@ -127,7 +129,7 @@ export function ChatPanel({
             updateLast({ notices: [...notices] });
           } else if (event === "proposal") updateLast({ proposal: data });
           else if (event === "done") {
-            updateLast({ done: true });
+            updateLast({ done: true, ...(data.model ? { model: data.model } : {}) });
             if (data.sessionId) setChat((current) => ({ ...current, sessionId: data.sessionId! }));
           } else if (event === "failed")
             updateLast({ done: true, error: data.error.code === "CANCELLED" ? null : data.error });
@@ -150,7 +152,7 @@ export function ChatPanel({
   return (
     <aside className={`chat-panel${open ? " open" : ""}`} aria-label="Deck chat">
       <header className="chat-head">
-        <AiAction onClick={() => setOpen((value) => !value)} title="Ask about this deck">
+        <AiAction task="chat" onClick={() => setOpen((value) => !value)} title="Ask about this deck">
           {open ? "Hide chat" : "Chat"}
         </AiAction>
         {open && chat.entries.length ? (
@@ -188,6 +190,11 @@ export function ChatPanel({
                     </p>
                   ))}
                   {entry.error ? <ErrorNotice error={entry.error} /> : null}
+                  {entry.model ? (
+                    <small className="muted" data-testid="chat-model">
+                      {entry.model}
+                    </small>
+                  ) : null}
                   {entry.proposal && entry.closed ? (
                     <p className="muted" data-testid="chat-closed">
                       Review closed.

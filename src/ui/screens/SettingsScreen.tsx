@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { API_KEY_MASK, type ApiError, type LlmTestResponse } from "../../shared/api";
+import {
+  AI_TASKS,
+  AI_TASK_LABELS,
+  API_KEY_MASK,
+  type AiTask,
+  type ApiError,
+  type LlmTestResponse,
+} from "../../shared/api";
 import { ApiRequestError, getSettings, listLlmModels, putSettings, testLlm } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 
@@ -36,6 +43,8 @@ function presetFor(url: string): PresetId {
   return PRESETS.find((preset) => preset.url && preset.url === normalized)?.id ?? "custom";
 }
 
+const NO_TASK_MODELS: Record<AiTask, string> = { rewrite: "", generate: "", draft: "", chat: "" };
+
 /** Settings → Local model: where the LLM is, which model, and a connection test. */
 export function SettingsScreen() {
   const queryClient = useQueryClient();
@@ -43,6 +52,8 @@ export function SettingsScreen() {
   const [baseUrl, setBaseUrl] = useState("");
   const [preset, setPreset] = useState<PresetId>("ollama");
   const [model, setModel] = useState("");
+  // US-19: a model per AI task; "" means the default model.
+  const [taskModels, setTaskModels] = useState<Record<AiTask, string>>(NO_TASK_MODELS);
   const [apiKey, setApiKey] = useState("");
   const [keyTouched, setKeyTouched] = useState(false);
   const [temperature, setTemperature] = useState(0.2);
@@ -62,26 +73,32 @@ export function SettingsScreen() {
     setBaseUrl(url);
     setPreset(presetFor(url));
     setModel(llm?.model ?? "");
+    setTaskModels({ ...NO_TASK_MODELS, ...(llm?.taskModels ?? {}) });
     setApiKey(llm?.apiKey ? API_KEY_MASK : "");
     setKeyTouched(false);
     if (llm) {
       setTemperature(llm.temperature);
       setTimeoutS(Math.round(llm.timeoutMs / 1000));
       setRepairRounds(llm.maxRepairRounds);
+      // US-19: list the models now, so a task model the server lost is marked at once.
+      void refreshModels(url, true);
     }
+    // Runs when saved settings arrive; refreshModels only reads values set just above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.data]);
 
   // The key to send for an unsaved connection: left out keeps the saved one.
   const keyForRequest = () => (keyTouched ? apiKey || null : undefined);
 
-  const refreshModels = async (url = baseUrl) => {
+  /** Lists the server's models; `keep` leaves the chosen default alone (used on load). */
+  const refreshModels = async (url = baseUrl, keep = false) => {
     if (!url) return;
     setLoadingModels(true);
     setModelsError(null);
     try {
       const response = await listLlmModels({ baseUrl: url, apiKey: keyForRequest() });
       setModels(response.models.map((item) => item.id));
-      if (response.models.length && !response.models.some((item) => item.id === model))
+      if (!keep && response.models.length && !response.models.some((item) => item.id === model))
         setModel(response.models[0]!.id);
     } catch (error) {
       setModels(null);
@@ -123,6 +140,7 @@ export function SettingsScreen() {
           temperature,
           timeoutMs: timeoutS * 1000,
           maxRepairRounds: repairRounds,
+          taskModels: Object.fromEntries(AI_TASKS.map((task) => [task, taskModels[task] || null])),
         },
       });
       queryClient.setQueryData(["settings"], next);
@@ -246,6 +264,40 @@ export function SettingsScreen() {
             {HINTS[modelsError.code] ? <p className="muted">{HINTS[modelsError.code]}</p> : null}
           </div>
         ) : null}
+        <fieldset className="task-models" data-testid="task-models">
+          <legend>Model for each task</legend>
+          <p className="muted">
+            Use a small model for quick edits and a larger one for whole decks. Every task uses this server.
+          </p>
+          {AI_TASKS.map((task) => {
+            const chosen = taskModels[task];
+            const missing = Boolean(chosen && models && !models.includes(chosen));
+            const choices = [...new Set([...(chosen ? [chosen] : []), ...(models ?? [])])];
+            return (
+              <label key={task} className="field compact">
+                <span>{AI_TASK_LABELS[task]}</span>
+                <select
+                  aria-label={`Model for ${AI_TASK_LABELS[task]}`}
+                  value={chosen}
+                  aria-invalid={missing ? "true" : undefined}
+                  onChange={(event) => setTaskModels({ ...taskModels, [task]: event.target.value })}
+                >
+                  <option value="">Same as default{model ? ` (${model})` : ""}</option>
+                  {choices.map((id) => (
+                    <option key={id} value={id}>
+                      {id === chosen && missing ? `${id} (not on this server)` : id}
+                    </option>
+                  ))}
+                </select>
+                {missing ? (
+                  <small className="field-error" data-testid={`task-model-missing-${task}`}>
+                    {chosen} isn't on this server. Pick another model, or install it.
+                  </small>
+                ) : null}
+              </label>
+            );
+          })}
+        </fieldset>
         <label className="field narrow">
           <span>API key (optional)</span>
           <input

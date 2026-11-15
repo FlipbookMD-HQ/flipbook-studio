@@ -83,7 +83,11 @@ describe("generate-deck from an uploaded file", () => {
     const list = await sseEvents(await generate(sourceId));
     expect(list.map((item) => item.event)).toEqual(["slide", "slide", "slide", "notice", "done"]);
     expect(list[3]!.data).toEqual({ message: "Removed 1 image reference(s) that weren't in the file" });
-    expect(list.at(-1)!.data).toEqual({ deckId: encodeDeckId("indices"), violations: [] });
+    expect(list.at(-1)!.data).toEqual({
+      deckId: encodeDeckId("indices"),
+      violations: [],
+      model: "stub-model",
+    });
 
     const prompt = fake.requests[0]!.messages.at(-1)!.content;
     expect(prompt).toContain("Keep its facts, its order and its language");

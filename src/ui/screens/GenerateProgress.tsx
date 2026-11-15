@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { ApiError, GenerateDeckRequest, SlideDraft, Violation } from "../../shared/api";
 import { ApiRequestError, generateDeck, getDeck, saveGeneratedDeck } from "../api";
+import { useLlmStatus } from "../ai";
 import { ErrorNotice } from "./Shell";
 
 type Status =
@@ -101,11 +102,13 @@ export function GenerateProgress({
     }
   };
 
+  // US-19: generating (also from a file) runs on the "generate" task's model.
+  const model = useLlmStatus().modelFor("generate");
   return (
     <section className="generate-progress" aria-label="Generation" data-testid="generate-progress">
       <p className="status" role="status">
         {status.state === "running"
-          ? `Writing slides… ${slides.length}`
+          ? `Writing slides${model ? ` with ${model}` : ""}… ${slides.length}`
           : status.state === "repairing"
             ? `Repairing ${status.count} slide${status.count === 1 ? "" : "s"} (round ${status.round})…`
             : status.state === "taken"

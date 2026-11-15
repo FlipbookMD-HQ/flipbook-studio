@@ -176,6 +176,7 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
             Blank or from a kit
           </button>
           <AiAction
+            task="generate"
             onClick={() => setMode("ai")}
             disabled={running}
             title="Write the deck with your local model"
