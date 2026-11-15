@@ -7,6 +7,8 @@ import { bodyLimit } from "hono/body-limit";
 import { ZodError } from "zod";
 import { assetMime } from "@flipbook-md/core";
 import {
+  AI_TASK_LABELS,
+  type AiTask,
   AddSlideRequestSchema,
   CreateDeckRequestSchema,
   ExportRequestSchema,
@@ -169,13 +171,20 @@ export function createApp(options: AppOptions) {
   sweep.unref();
   const chats = new ChatSessionStore();
   const journal = new DeckJournal();
-  /** The saved model and a provider for it, or 409 LLM_NOT_CONFIGURED (always before streaming). */
-  const configuredLlm = async () => {
+  /**
+   * The model for an AI task (its own, else the default; US-19, D30) and a provider for it, or 409
+   * LLM_NOT_CONFIGURED (always before streaming).
+   */
+  const configuredLlm = async (task: AiTask) => {
     const llm = (await settingsStore).current().llm;
     if (!llm?.baseUrl || !llm.model)
       throw new StudioError(409, "LLM_NOT_CONFIGURED", "Set up a local model in Settings first.");
     const provider = llmProvider({ baseUrl: llm.baseUrl, apiKey: llm.apiKey, timeoutMs: llm.timeoutMs });
-    return { llm: { ...llm, model: llm.model }, provider };
+    return {
+      llm: { ...llm, model: llm.taskModels?.[task] ?? llm.model },
+      provider,
+      task: AI_TASK_LABELS[task],
+    };
   };
 
   app.use("*", async (c, next) => {
@@ -421,18 +430,18 @@ export function createApp(options: AppOptions) {
   // US-12: AI rewrite and proposals.
   api.post("/ai/rewrite", async (c) => {
     const request = RewriteRequestSchema.parse(await jsonBody(c));
-    const { llm, provider } = await configuredLlm();
+    const { llm, provider, task } = await configuredLlm("rewrite");
     const prepared = await prepareRewrite(options.workspace, request);
     return sseTask(
       c.req.raw,
       (context) => runRewrite(context, prepared, request, { provider, llm, store: proposals, log }),
-      { log, baseUrl: llm.baseUrl, model: llm.model },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task },
     );
   });
   // US-13: generate a deck. Checks that can answer with plain JSON run before the stream opens.
   api.post("/ai/generate-deck", async (c) => {
     const request = GenerateDeckRequestSchema.parse(await jsonBody(c));
-    const { llm, provider } = await configuredLlm();
+    const { llm, provider, task } = await configuredLlm("generate");
     const prepared = await prepareGenerate(options.workspace, request, sources);
     return sseTask(
       c.req.raw,
@@ -444,7 +453,7 @@ export function createApp(options: AppOptions) {
           sources,
           log,
         }),
-      { log, baseUrl: llm.baseUrl, model: llm.model },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task },
     );
   });
   api.post("/ai/generate-deck/:runId/save-as", async (c) => {
@@ -454,18 +463,18 @@ export function createApp(options: AppOptions) {
   // US-14: draft a kit piece. Name checks answer with plain JSON before the stream opens.
   api.post("/ai/draft-kit", async (c) => {
     const request = DraftKitRequestSchema.parse(await jsonBody(c));
-    const { llm, provider } = await configuredLlm();
+    const { llm, provider, task } = await configuredLlm("draft");
     const prepared = await prepareDraftKit(options.workspace, options.library, request);
     return sseTask(
       c.req.raw,
       (context) => runDraftKit(context, prepared, request, { provider, llm, store: proposals, log }),
-      { log, baseUrl: llm.baseUrl, model: llm.model },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task },
     );
   });
   // US-15: chat about a deck. One stream per deck; the session lives in memory only.
   api.post("/ai/chat", async (c) => {
     const request = ChatRequestSchema.parse(await jsonBody(c));
-    const { llm, provider } = await configuredLlm();
+    const { llm, provider, task } = await configuredLlm("chat");
     await findDeck(options.workspace, request.deckId);
     const session = chats.open(request.deckId, request.sessionId);
     chats.begin(request.deckId);
@@ -484,7 +493,7 @@ export function createApp(options: AppOptions) {
           chats.end(request.deckId);
         }
       },
-      { log, baseUrl: llm.baseUrl, model: llm.model },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task },
     );
   });
   api.post("/proposals/:id/apply", async (c) => {

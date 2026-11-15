@@ -133,7 +133,7 @@ describe("POST /api/ai/generate-deck", () => {
     const list = await events(await generate());
     expect(names(list)).toEqual(["slide", "slide", "slide", "done"]);
     expect(list[1]!.data).toMatchObject({ index: 1, draft: { type: "timeline" } });
-    expect(list.at(-1)!.data).toEqual({ deckId: encodeDeckId("guide"), violations: [] });
+    expect(list.at(-1)!.data).toEqual({ deckId: encodeDeckId("guide"), violations: [], model: "stub-model" });
     const { presentation, violations } = await loadPresentation(path.join(root, "guide"), {
       blueprint: "evaluate",
     });
@@ -192,7 +192,11 @@ describe("POST /api/ai/generate-deck", () => {
       chat: [lines(timeline(1), COVER), { kind: "text", text: '{"keep":1}\n{"keep":0}\n' }],
     });
     const list = await events(await generate({ kind: "single" }));
-    expect(list.at(-1)!.data).toEqual({ deckId: encodeDeckId("guide.slide.md"), violations: [] });
+    expect(list.at(-1)!.data).toEqual({
+      deckId: encodeDeckId("guide.slide.md"),
+      violations: [],
+      model: "stub-model",
+    });
     const text = await fs.readFile(path.join(root, "guide.slide.md"), "utf8");
     expect(text.indexOf("# Reading guide")).toBeLessThan(text.indexOf("# Phase 1"));
   });

@@ -13,7 +13,7 @@ What Studio does today:
 - Present a deck and export it as a PNG carousel or an MP4, like the CLI.
 - Start a deck from a Markdown, text or Word file.
 - Duplicate a deck, theme, template, blueprint or media kit to try a variation.
-- Optional AI from a model on your machine (Ollama, LM Studio or any OpenAI-compatible server): rewrite a slide, generate a deck, draft a kit piece, and chat about the open deck. Every AI edit is a proposal you accept or reject.
+- Optional AI from a model on your machine (Ollama, LM Studio or any OpenAI-compatible server): rewrite a slide, generate a deck, draft a kit piece, and chat about the open deck, each on the model you choose for it. Every AI edit is a proposal you accept or reject.
 
 Studio builds on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core), the same library as the CLI.
 
@@ -101,6 +101,10 @@ In the slide editor, **AI** rewrites the open slide (Shorten, Expand, Translate 
 **Draft with AI** (in Kits → Themes, Templates, Blueprints and Media kits) drafts a kit piece from a description. A theme, template or blueprint opens in its editor as an unsaved draft with a live preview; Save writes it like any other edit. A media kit shows its file, plus a file for each new theme it drafts, for review; Accept all writes them and opens the kit. Studio validates every draft with the same rules as `flipbook check` and caps each drafted file at 50 kB; output that fails is sent back to the model once, then shown as an error with Retry, and nothing is written.
 
 **Chat** (under the slide editor) answers questions about the open deck: its slides, media kit, blueprint and current rule problems. When you ask for a change ("split slide 3 into two"), the reply carries edits that you accept or reject one by one; an edit whose slide changed after the reply is marked stale and can't be applied. One reply runs per deck at a time, and the history lasts until Studio stops.
+
+### Choose a model for each task
+
+Under **Settings → Model for each task**, pick a model for **Rewrite a slide**, **Generate a deck** (which also covers converting a file), **Draft a kit piece** and **Chat**, for example a small fast model for rewrites and a larger one for whole decks. Each task starts as **Same as default**, and follows the default model until you pick another. Every task uses the same server and the same Advanced settings. Each AI button shows the model it will use, and each chat answer shows the model that wrote it. If the server no longer has a task's model, Settings marks it, and only that task fails, with a message naming the model.
 
 ### Review checklist for AI features
 
