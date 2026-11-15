@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { ViolationBadge, ViolationsPanel, violationsFor } from "./Violations";
 import { ApiRequestError, getDeck } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
 import { ImagesPanel } from "./ImagesPanel";
+import { DuplicateDeckButton } from "./Duplicate";
 
 export function DeckScreen() {
   const { id = "" } = useParams();
   const deck = useQuery({ queryKey: ["deck", id], queryFn: () => getDeck(id) });
+  // US-20: after Duplicate, say where the copy came from and which symlinks it left out.
+  const duplicated = useLocation().state as { duplicatedFrom?: string; skipped?: string[] } | null;
 
   if (deck.isPending) return <Shell>Loading deck…</Shell>;
   if (deck.isError) {
@@ -25,8 +28,31 @@ export function DeckScreen() {
 
   const { title, path, slides, violations, hasBlueprint } = deck.data;
   return (
-    <Shell crumb={path} actions={<DeckActions deckId={deck.data.id} slideIndex={0} />}>
+    <Shell
+      crumb={path}
+      actions={
+        <>
+          <DuplicateDeckButton deckId={deck.data.id} />
+          <DeckActions deckId={deck.data.id} slideIndex={0} />
+        </>
+      }
+    >
       <h1>{title}</h1>
+      {duplicated?.duplicatedFrom != null ? (
+        <div className="notice" role="status" data-testid="duplicated-notice">
+          <p>
+            Duplicated from <strong>{duplicated.duplicatedFrom}</strong>.
+          </p>
+          {duplicated.skipped?.length ? (
+            <p>
+              Left out (symlinks):{" "}
+              {duplicated.skipped.map((item) => (
+                <code key={item}>{item} </code>
+              ))}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <ViolationsPanel
         deckId={deck.data.id}
         slides={slides}

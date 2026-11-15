@@ -8,6 +8,9 @@ import {
   AddSlideResponseSchema,
   ExportJobSchema,
   KitDocSchema,
+  DuplicateDeckResponseSchema,
+  type DuplicateDeckRequest,
+  type CopyKitRequest,
   KitPreviewResponseSchema,
   RenameGroupResponseSchema,
   SettingsSchema,
@@ -221,6 +224,18 @@ export const copyGroup = (name: string, request: CopyGroupRequest) =>
   });
 export const renameGroup = (name: string, request: RenameGroupRequest) =>
   apiFetch(`/api/kits/group/${encodeURIComponent(name)}/rename`, RenameGroupResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+
+// US-20: duplicate decks and kit pieces.
+export const duplicateDeck = (deckId: string, request: DuplicateDeckRequest) =>
+  apiFetch(`/api/decks/${deckId}/duplicate`, DuplicateDeckResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+export const copyKit = (kind: KitKind, name: string, request: CopyKitRequest) =>
+  apiFetch(`/api/kits/${kind}/${encodeURIComponent(name)}/copy`, KitDocSchema, {
     method: "POST",
     body: JSON.stringify(request),
   });

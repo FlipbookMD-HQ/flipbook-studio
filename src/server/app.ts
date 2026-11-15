@@ -13,6 +13,8 @@ import {
   CreateKitRequestSchema,
   KitPreviewRequestSchema,
   CopyGroupRequestSchema,
+  CopyKitRequestSchema,
+  DuplicateDeckRequestSchema,
   LlmModelsRequestSchema,
   LlmTestRequestSchema,
   SettingsPatchSchema,
@@ -45,7 +47,16 @@ import { coreExports, exportsInfo, startExport, type ExportServices } from "./ex
 import { JobRegistry } from "./jobs.js";
 import { SettingsStore, configDir, maskSettings } from "./settings.js";
 import { defaultProviderFactory, listModels, testConnection, type ProviderFactory } from "./llm/routes.js";
-import { copyGroup, createKit, getKit, parseKind, previewKit, renameGroup, updateKit } from "./kits.js";
+import {
+  copyGroup,
+  copyKit,
+  createKit,
+  getKit,
+  parseKind,
+  previewKit,
+  renameGroup,
+  updateKit,
+} from "./kits.js";
 import { PlayerRegistry } from "./present.js";
 import {
   addSlide,
@@ -53,6 +64,7 @@ import {
   deckDetail,
   deckFile,
   deleteSlide,
+  duplicateWorkspaceDeck,
   findDeck,
   orderSlides,
   previewSlide,
@@ -354,6 +366,17 @@ export function createApp(options: AppOptions) {
     );
     return c.json(await deckDetail(options.workspace, created.id), 201);
   });
+  // US-20: duplicate a deck beside itself.
+  api.post("/decks/:id/duplicate", async (c) =>
+    c.json(
+      await duplicateWorkspaceDeck(
+        options.workspace,
+        c.req.param("id"),
+        DuplicateDeckRequestSchema.parse(await jsonBody(c)),
+      ),
+      201,
+    ),
+  );
   // US-7: kits.
   api.post("/kits/:kind/preview", async (c) => {
     const kind = parseKind(c.req.param("kind"));
@@ -484,6 +507,18 @@ export function createApp(options: AppOptions) {
         options.workspace,
         c.req.param("name"),
         CopyGroupRequestSchema.parse(await jsonBody(c)),
+      ),
+      201,
+    ),
+  );
+  // US-20: copy any library or built-in kit piece.
+  api.post("/kits/:kind/:name/copy", async (c) =>
+    c.json(
+      await copyKit(
+        options.workspace,
+        parseKind(c.req.param("kind")),
+        c.req.param("name"),
+        CopyKitRequestSchema.parse(await jsonBody(c)),
       ),
       201,
     ),
