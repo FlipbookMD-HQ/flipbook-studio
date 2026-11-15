@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import { startStudio, stopStudio } from "./support/studio";
 
 // US-16: deck images, on a Studio of its own (port 4405) and a deck without a blueprint.
@@ -62,9 +62,25 @@ const assetsDir = () => path.join(workspace, "talk/assets");
 const listAssets = () => fs.readdir(assetsDir()).catch(() => [] as string[]);
 const slideText = (slide: string) => fs.readFile(path.join(workspace, "talk", slide), "utf8");
 
+/** Uploads on the deck screen and waits until every file's request is done (accepted, refused or
+ * dropped), so a navigation right after can't abort an upload still in flight. */
 async function uploadOnDeck(page: Page, files: { name: string; mimeType: string; buffer: Buffer }[]) {
   await page.goto(`${studio.url}decks/${DECK}`);
+  let done = 0;
+  const allAnswered = new Promise<void>((resolve) => {
+    const onDone = (request: Request) => {
+      if (request.method() !== "POST" || !new URL(request.url()).pathname.endsWith("/assets")) return;
+      done += 1;
+      if (done < files.length) return;
+      page.off("requestfinished", onDone);
+      page.off("requestfailed", onDone);
+      resolve();
+    };
+    page.on("requestfinished", onDone);
+    page.on("requestfailed", onDone);
+  });
   await page.getByLabel("Image files").setInputFiles(files);
+  await allAnswered;
 }
 async function openSlide(page: Page, slide: string) {
   await page.goto(`${studio.url}decks/${DECK}/slides/${encodeURIComponent(slide)}`);
