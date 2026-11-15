@@ -33,4 +33,4 @@ The HTTP API under `/api` is internal to Studio and is not a public, stable API.
 2. Tag that commit and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
 3. The **Release** workflow checks the tag matches `package.json`, runs lint, types and unit tests, packs Studio, installs the tarball and starts it once, then creates the GitHub Release with `flipbook-studio.tgz`, its SHA-256 checksum and generated notes. A version with a `-` (such as `0.2.0-beta.1`) becomes a prerelease, which the `latest` download link skips.
 
-npm publishing is separate and manual: run the **Publish** workflow in GitHub Actions once Studio is ready for npm.
+Studio is released only on GitHub, never on npm. `package.json` is `private: true`, so `npm publish` refuses it.
