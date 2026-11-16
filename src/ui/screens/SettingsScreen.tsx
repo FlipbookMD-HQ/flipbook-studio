@@ -193,189 +193,280 @@ export function SettingsScreen() {
         </>
       }
     >
-      <h1>Settings</h1>
-      <section className="settings" aria-labelledby="llm-title">
-        <h2 id="llm-title">Local model</h2>
-        <p className="muted">
-          AI features use an OpenAI-compatible server on your machine, such as Ollama or LM Studio. Settings
-          are stored outside your decks.
-        </p>
-        {saveError ? <ErrorNotice error={saveError} /> : null}
-        {saved ? (
-          <p className="ok" role="status">
-            Saved. AI features use {model}.
-          </p>
-        ) : null}
-        <fieldset className="choices">
-          <legend>Server</legend>
-          {PRESETS.map((item) => (
-            <label key={item.id} className="choice">
-              <input
-                type="radio"
-                name="preset"
-                checked={preset === item.id}
-                onChange={() => pickPreset(item.id)}
-              />
-              {item.label}
-            </label>
-          ))}
-        </fieldset>
-        <label className="field">
-          <span>Base URL</span>
-          <input
-            value={baseUrl}
-            onChange={(event) => {
-              setBaseUrl(event.target.value);
-              setPreset(presetFor(event.target.value));
-            }}
-            onBlur={() => void refreshModels()}
-            placeholder="http://127.0.0.1:11434/v1"
-          />
-        </label>
-        {host ? (
-          <p className="warning" data-testid="remote-notice">
-            Deck content will be sent to {host}.
-          </p>
-        ) : null}
-        <div className="kit-row">
-          <label className="field compact">
-            <span>Model</span>
-            <select aria-label="Model" value={model} onChange={(event) => setModel(event.target.value)}>
-              {offered.length ? null : <option value="">No model</option>}
-              {offered.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={() => void refreshModels()} disabled={loadingModels || !baseUrl}>
-            {loadingModels ? "Loading…" : "Refresh models"}
-          </button>
-        </div>
-        {models && models.length === 0 ? (
-          <p className="warning" data-testid="no-models">
-            No models — <code>ollama pull &lt;model&gt;</code>
-          </p>
-        ) : null}
-        {modelsError ? (
-          <div data-testid="models-error">
-            <ErrorNotice error={modelsError} />
-            {HINTS[modelsError.code] ? <p className="muted">{HINTS[modelsError.code]}</p> : null}
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Preferences">
+          <p className="eyebrow mono">Preferences</p>
+          <a href="#provider" className="active">
+            Local AI &amp; engine <i className="dot" aria-hidden="true" />
+          </a>
+          <a href="#routing">Task routing</a>
+          <a href="#bounds">Sampling &amp; repair</a>
+          <a href="#diagnostics">Diagnostics</a>
+          <div className="engine-card mono small">
+            <span>
+              <i className={settings.data.llm ? "dot" : "dot danger"} aria-hidden="true" />{" "}
+              {settings.data.llm ? "Engine configured" : "Not configured"}
+            </span>
+            {settings.data.llm ? <span className="muted">{model || "no model"}</span> : null}
           </div>
-        ) : null}
-        <fieldset className="task-models" data-testid="task-models">
-          <legend>Model for each task</legend>
-          <p className="muted">
-            Use a small model for quick edits and a larger one for whole decks. Every task uses this server.
-          </p>
-          {AI_TASKS.map((task) => {
-            const chosen = taskModels[task];
-            const missing = Boolean(chosen && models && !models.includes(chosen));
-            const choices = [...new Set([...(chosen ? [chosen] : []), ...(models ?? [])])];
-            return (
-              <label key={task} className="field compact">
-                <span>{AI_TASK_LABELS[task]}</span>
-                <select
-                  aria-label={`Model for ${AI_TASK_LABELS[task]}`}
-                  value={chosen}
-                  aria-invalid={missing ? "true" : undefined}
-                  onChange={(event) => setTaskModels({ ...taskModels, [task]: event.target.value })}
-                >
-                  <option value="">Same as default{model ? ` (${model})` : ""}</option>
-                  {choices.map((id) => (
+        </nav>
+        <section className="settings" aria-labelledby="llm-title">
+          <header className="settings-head">
+            <div>
+              <h1 id="llm-title">
+                Local AI &amp; inference engine{" "}
+                {host ? (
+                  <span className="tag danger">Remote</span>
+                ) : (
+                  <span className="tag ok">Local only</span>
+                )}
+              </h1>
+              <p className="muted">
+                AI features use an OpenAI-compatible server on your machine, such as Ollama or LM Studio.
+                Settings are stored outside your decks.
+              </p>
+            </div>
+          </header>
+          {host ? null : (
+            <div className="privacy-card">
+              <strong>Private by default</strong>
+              <p className="muted">
+                With a loopback base URL, rewriting, generation and chat stay on this machine. No deck content
+                leaves it.
+              </p>
+            </div>
+          )}
+          {saveError ? <ErrorNotice error={saveError} /> : null}
+          {saved ? (
+            <p className="ok" role="status">
+              Saved. AI features use {model}.
+            </p>
+          ) : null}
+          <div className="settings-card" id="provider">
+            <h2 className="card-title">1. Inference provider</h2>
+            <fieldset className="choices segmented-radios">
+              <legend>Server</legend>
+              {PRESETS.map((item) => (
+                <label key={item.id} className="choice">
+                  <input
+                    type="radio"
+                    name="preset"
+                    checked={preset === item.id}
+                    onChange={() => pickPreset(item.id)}
+                  />
+                  {item.label}
+                </label>
+              ))}
+            </fieldset>
+            <label className="field">
+              <span>Base URL</span>
+              <input
+                value={baseUrl}
+                onChange={(event) => {
+                  setBaseUrl(event.target.value);
+                  setPreset(presetFor(event.target.value));
+                }}
+                onBlur={() => void refreshModels()}
+                placeholder="http://127.0.0.1:11434/v1"
+              />
+            </label>
+            {host ? (
+              <p className="warning" data-testid="remote-notice">
+                Deck content will be sent to {host}.
+              </p>
+            ) : null}
+            <div className="kit-row">
+              <label className="field compact">
+                <span>Model</span>
+                <select aria-label="Model" value={model} onChange={(event) => setModel(event.target.value)}>
+                  {offered.length ? null : <option value="">No model</option>}
+                  {offered.map((id) => (
                     <option key={id} value={id}>
-                      {id === chosen && missing ? `${id} (not on this server)` : id}
+                      {id}
                     </option>
                   ))}
                 </select>
-                {missing ? (
-                  <small className="field-error" data-testid={`task-model-missing-${task}`}>
-                    {chosen} isn't on this server. Pick another model, or install it.
-                  </small>
-                ) : null}
               </label>
-            );
-          })}
-        </fieldset>
-        <label className="field narrow">
-          <span>API key (optional)</span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={apiKey}
-            onChange={(event) => {
-              setApiKey(event.target.value);
-              setKeyTouched(true);
-            }}
-            onFocus={() => {
-              if (apiKey === API_KEY_MASK) {
-                setApiKey("");
-                setKeyTouched(true);
-              }
-            }}
-          />
-        </label>
-        <details>
-          <summary>Advanced</summary>
-          <div className="kit-row">
-            <label className="field compact">
-              <span>Temperature</span>
+              <button type="button" onClick={() => void refreshModels()} disabled={loadingModels || !baseUrl}>
+                {loadingModels ? "Loading…" : "Refresh models"}
+              </button>
+            </div>
+            {models && models.length === 0 ? (
+              <p className="warning" data-testid="no-models">
+                No models — <code>ollama pull &lt;model&gt;</code>
+              </p>
+            ) : null}
+            {modelsError ? (
+              <div data-testid="models-error">
+                <ErrorNotice error={modelsError} />
+                {HINTS[modelsError.code] ? <p className="muted">{HINTS[modelsError.code]}</p> : null}
+              </div>
+            ) : null}
+            <label className="field narrow">
+              <span>API key (optional)</span>
               <input
-                type="number"
+                type="password"
+                autoComplete="off"
+                value={apiKey}
+                onChange={(event) => {
+                  setApiKey(event.target.value);
+                  setKeyTouched(true);
+                }}
+                onFocus={() => {
+                  if (apiKey === API_KEY_MASK) {
+                    setApiKey("");
+                    setKeyTouched(true);
+                  }
+                }}
+              />
+            </label>
+          </div>
+          <div className="settings-card" id="routing">
+            <h2 className="card-title">2. Task routing</h2>
+            <fieldset className="task-models" data-testid="task-models">
+              <legend>Model for each task</legend>
+              <p className="muted">
+                Use a small model for quick edits and a larger one for whole decks. Every task uses this
+                server.
+              </p>
+              {AI_TASKS.map((task) => {
+                const chosen = taskModels[task];
+                const missing = Boolean(chosen && models && !models.includes(chosen));
+                const choices = [...new Set([...(chosen ? [chosen] : []), ...(models ?? [])])];
+                return (
+                  <label key={task} className="field compact">
+                    <span>{AI_TASK_LABELS[task]}</span>
+                    <select
+                      aria-label={`Model for ${AI_TASK_LABELS[task]}`}
+                      value={chosen}
+                      aria-invalid={missing ? "true" : undefined}
+                      onChange={(event) => setTaskModels({ ...taskModels, [task]: event.target.value })}
+                    >
+                      <option value="">Same as default{model ? ` (${model})` : ""}</option>
+                      {choices.map((id) => (
+                        <option key={id} value={id}>
+                          {id === chosen && missing ? `${id} (not on this server)` : id}
+                        </option>
+                      ))}
+                    </select>
+                    {missing ? (
+                      <small className="field-error" data-testid={`task-model-missing-${task}`}>
+                        {chosen} isn't on this server. Pick another model, or install it.
+                      </small>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </fieldset>
+          </div>
+          <div className="settings-card" id="bounds">
+            <h2 className="card-title">3. Sampling &amp; repair bounds</h2>
+            <div className="bounds">
+              <RangeField
+                label="Temperature"
                 min={0}
                 max={2}
                 step={0.1}
                 value={temperature}
-                onChange={(event) => setTemperature(Number(event.target.value))}
+                onChange={setTemperature}
+                hint={["0 (strict)", "2 (creative)"]}
               />
-            </label>
-            <label className="field compact">
-              <span>Timeout (seconds)</span>
-              <input
-                type="number"
+              <RangeField
+                label="Timeout (seconds)"
                 min={5}
                 max={600}
+                step={5}
                 value={timeoutS}
-                onChange={(event) => setTimeoutS(Number(event.target.value))}
+                onChange={setTimeoutS}
+                hint={["5 s", "600 s"]}
               />
-            </label>
-            <label className="field compact">
-              <span>Repair rounds</span>
-              <input
-                type="number"
+              <RangeField
+                label="Repair rounds"
                 min={0}
                 max={3}
+                step={1}
                 value={repairRounds}
-                onChange={(event) => setRepairRounds(Number(event.target.value))}
+                onChange={setRepairRounds}
+                hint={["0 (fail fast)", "3 (keep fixing)"]}
               />
-            </label>
+            </div>
           </div>
-        </details>
-        <div className="kit-row">
-          <button type="button" onClick={() => void runTest()} disabled={Boolean(reason) || test.running}>
-            {test.running ? "Testing…" : "Test"}
-          </button>
-          {settings.data.llm ? (
-            <button type="button" className="danger" onClick={() => void disconnect()}>
-              Disconnect
-            </button>
-          ) : null}
-        </div>
-        <div data-testid="test-result" aria-live="polite">
-          {test.result ? (
-            <p className="ok">
-              “{test.result.reply}” in {test.result.latencyMs} ms
-            </p>
-          ) : null}
-          {test.error ? (
-            <>
-              <ErrorNotice error={test.error} />
-              {HINTS[test.error.code] ? <p className="muted">{HINTS[test.error.code]}</p> : null}
-            </>
-          ) : null}
-        </div>
-      </section>
+          <div className="settings-card" id="diagnostics">
+            <h2 className="card-title">4. Diagnostics</h2>
+            <div className="kit-row">
+              <button type="button" onClick={() => void runTest()} disabled={Boolean(reason) || test.running}>
+                {test.running ? "Testing…" : "Test"}
+              </button>
+              {settings.data.llm ? (
+                <button type="button" className="danger" onClick={() => void disconnect()}>
+                  Disconnect
+                </button>
+              ) : null}
+            </div>
+            <div data-testid="test-result" aria-live="polite">
+              {test.result ? (
+                <p className="ok">
+                  “{test.result.reply}” in {test.result.latencyMs} ms
+                </p>
+              ) : null}
+              {test.error ? (
+                <>
+                  <ErrorNotice error={test.error} />
+                  {HINTS[test.error.code] ? <p className="muted">{HINTS[test.error.code]}</p> : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      </div>
     </Shell>
+  );
+}
+
+/** A slider with a number box for exact values; both edit the same setting. */
+function RangeField({
+  label,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (value: number) => void;
+  hint: [string, string];
+}) {
+  return (
+    <div className="range-field">
+      <label className="range-head">
+        <span>{label}</span>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+      </label>
+      <input
+        type="range"
+        aria-label={`${label} slider`}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span className="range-hint mono">
+        <span>{hint[0]}</span>
+        <span>{hint[1]}</span>
+      </span>
+    </div>
   );
 }
