@@ -217,6 +217,12 @@ export function SlideEditor() {
 
   return (
     <Shell
+      wide
+      status={
+        <span>
+          Slide {slide.index + 1} of {data.slides.length}
+        </span>
+      }
       crumb={
         <>
           <Link to={`/decks/${id}`}>{data.title}</Link> · slide {slide.index + 1}

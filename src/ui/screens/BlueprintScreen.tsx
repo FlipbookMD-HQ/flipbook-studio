@@ -206,6 +206,7 @@ export function BlueprintScreen() {
   const decks = (workspace.data?.decks ?? []).filter((item) => !item.error);
   return (
     <Shell
+      wide
       crumb={
         <>
           <Link to="/kits/blueprints">Blueprints</Link> · {title}
@@ -242,8 +243,51 @@ export function BlueprintScreen() {
           <input value={newName} onChange={(event) => setNewName(event.target.value.trim())} />
         </label>
       ) : null}
-      <div className="blueprint-layout">
-        <section>
+      <div className="blueprint-layout three">
+        <nav className="bp-outline" aria-label="Blueprint outline">
+          <p className="eyebrow mono">
+            <i className="dot" aria-hidden="true" /> Master blueprint
+            <span className="chip mono">{scope}</span>
+          </p>
+          <h2>{title}</h2>
+          {value ? (
+            <>
+              <p className="muted mono small">
+                {Object.keys(value.types).length} types · {value.pages.length} page steps
+              </p>
+              <p className="eyebrow mono">Layout types</p>
+              <ol className="archetypes">
+                {Object.entries(value.types).map(([name, rules], index) => (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab("form");
+                        requestAnimationFrame(() =>
+                          document
+                            .querySelector(`[data-testid="type-${CSS.escape(name)}"]`)
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                        );
+                      }}
+                    >
+                      <span className="num mono">{String(index + 1).padStart(2, "0")}</span>
+                      <span>
+                        <strong>{name}</strong>
+                        <small className="mono">
+                          {rules?.template ?? "any template"}
+                          {rules?.max_chars ? ` · ≤${rules.max_chars} chars` : ""}
+                        </small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : (
+            <p className="muted small">Outline appears when the YAML parses.</p>
+          )}
+        </nav>
+        <section className="bp-main">
           <div role="tablist" className="tabs">
             <button type="button" role="tab" aria-selected={tab === "form"} onClick={() => setTab("form")}>
               Form
@@ -271,6 +315,7 @@ export function BlueprintScreen() {
           )}
         </section>
         <aside className="deck-check" aria-labelledby="check-title">
+          <p className="eyebrow mono">Deck verification</p>
           <h2 id="check-title">Check against deck</h2>
           <select
             aria-label="Check against deck"
@@ -295,10 +340,15 @@ export function BlueprintScreen() {
             ) : affected == null ? (
               <p className="muted">Pick a deck to see which slides would fail.</p>
             ) : affected.length === 0 ? (
-              <p className="ok">Every slide passes.</p>
+              <p className="ok">
+                <i className="dot" aria-hidden="true" /> Every slide passes.
+              </p>
             ) : (
               <>
-                <p>{new Set(affected.map((item) => item.source)).size} slide(s) would fail:</p>
+                <p>
+                  <span className="tag danger">{affected.length} violations</span>{" "}
+                  {new Set(affected.map((item) => item.source)).size} slide(s) would fail:
+                </p>
                 <ul className="violations-list">
                   {affected.map((item) => (
                     <li key={item.message}>{item.message}</li>
