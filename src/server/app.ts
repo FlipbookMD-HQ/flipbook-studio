@@ -42,6 +42,9 @@ import {
   PreviewRequestSchema,
   SaveSlideRequestSchema,
   TOKEN_PLACEHOLDER,
+  GitInitRequestSchema,
+  SaveVersionRequestSchema,
+  VersionsQuerySchema,
 } from "../shared/api.js";
 import { deckAssets, deleteAsset, uploadAsset } from "./assets.js";
 import { StudioError } from "./errors.js";
@@ -88,6 +91,8 @@ import { GenerationRuns, prepareGenerate, runGenerate } from "./ai/generate.js";
 import { sseTask } from "./ai/sse.js";
 import { prepareDraftKit, runDraftKit } from "./ai/draft-kit.js";
 import { ChatSessionStore, runChat } from "./ai/chat.js";
+import { GitRunner } from "./history/git.js";
+import { DeckHistoryService, gitFailure } from "./history/versions.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Room for multipart boundaries and headers around an 8 MB image. */
@@ -124,6 +129,8 @@ export interface AppOptions {
   settings?: SettingsStore;
   /** Test seam: how an LLM connection is made (default: OpenAI-compatible HTTP). */
   llmProvider?: ProviderFactory;
+  /** US-23: how git runs (default: the git on PATH, with Studio's environment). */
+  git?: GitRunner;
 }
 
 export type Env = { Variables: { requestId: string } };
@@ -186,6 +193,18 @@ export function createApp(options: AppOptions) {
   sweep.unref();
   const chats = new ChatSessionStore();
   const journal = new DeckJournal();
+  // US-23: version history. Git is checked once, at startup.
+  const git = options.git ?? new GitRunner();
+  void git.check();
+  const versions = new DeckHistoryService({
+    git,
+    workspace: options.workspace,
+    author: async () => (await settingsStore).current().git?.author,
+  });
+  const withGit = <T>(run: () => Promise<T>): Promise<T> =>
+    run().catch((error: unknown) => {
+      throw gitFailure(error, "GIT_COMMIT_FAILED");
+    });
   /**
    * The model for an AI task (its own, else the default; US-19, D30) and a provider for it, or 409
    * LLM_NOT_CONFIGURED (always before streaming).
@@ -317,6 +336,25 @@ export function createApp(options: AppOptions) {
       return c.json({ slides, hashes, violations, history });
     });
   }
+  // US-23: version history (git).
+  api.get("/decks/:id/versions", async (c) => {
+    const { before, limit } = VersionsQuerySchema.parse({
+      before: c.req.query("before"),
+      limit: c.req.query("limit"),
+    });
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    return c.json(await withGit(() => versions.list(deck, before, limit)));
+  });
+  api.post("/decks/:id/versions", async (c) => {
+    const { note } = SaveVersionRequestSchema.parse(await jsonBody(c));
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    return c.json(await withGit(() => versions.save(deck, note)), 201);
+  });
+  api.post("/git/init", async (c) => {
+    const { deckId, at } = GitInitRequestSchema.parse(await jsonBody(c));
+    const deck = await findDeck(options.workspace, deckId);
+    return c.json({ history: await withGit(() => versions.init(deck, at)) }, 201);
+  });
   // US-16: deck images.
   // US-18: start a deck from an uploaded file.
   api.post("/sources", async (c) => {
@@ -673,5 +711,5 @@ export function createApp(options: AppOptions) {
     jobs.cancelAll();
     await players.closeAll();
   };
-  return Object.assign(app, { shutdown, players, jobs });
+  return Object.assign(app, { shutdown, players, jobs, git });
 }

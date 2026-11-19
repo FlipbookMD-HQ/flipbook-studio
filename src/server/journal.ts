@@ -14,7 +14,7 @@ export const MAX_JOURNAL_BYTES = 64 * 1024 * 1024;
 /** Files larger than this are never snapshotted (and so never restored). */
 const MAX_FILE_BYTES = 16 * 1024 * 1024;
 /** Folders inside a deck that are never part of its history. */
-const SKIP_DIRS = new Set(["node_modules", "exports", "dist", TMP_DIR]);
+export const SKIP_DIRS = new Set(["node_modules", "exports", "dist", TMP_DIR]);
 
 /** A file's bytes, or null when it doesn't exist. */
 type Bytes = Buffer | null;

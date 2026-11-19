@@ -4,6 +4,7 @@ import type { ApiError, UndoResponse } from "../../shared/api";
 import { ApiRequestError, getHistory, undoDeck } from "../api";
 import { DECK_WRITTEN, isTextTarget, undoShortcut } from "../undo";
 import { assetsKey } from "./ImagesPanel";
+import { versionsKey } from "./HistoryPanel";
 import { ErrorNotice } from "./Shell";
 
 export const historyKey = (deckId: string) => ["history", deckId] as const;
@@ -41,7 +42,7 @@ export function UndoControls({
       queryClient.setQueryData(historyKey(deckId), result.history);
       // Ready for the next press as soon as the server answers; the refetches run behind it.
       setBusy(false);
-      for (const queryKey of [["deck", deckId], assetsKey(deckId), ["workspace"]])
+      for (const queryKey of [["deck", deckId], assetsKey(deckId), ["workspace"], versionsKey(deckId)])
         void queryClient.invalidateQueries({ queryKey });
       onChanged?.(result);
     } catch (caught) {
