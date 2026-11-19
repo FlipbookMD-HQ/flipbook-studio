@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiError, ApplyProposalResponse, Proposal, RewriteInstruction } from "../../shared/api";
+import type {
+  AiProvider,
+  ApiError,
+  ApplyProposalResponse,
+  Proposal,
+  RewriteInstruction,
+} from "../../shared/api";
 import { ApiRequestError, rewriteSlide } from "../api";
-import { AiAction } from "../ai";
+import { AiAction, SendsTo } from "../ai";
 import { ProposalReview } from "./ProposalReview";
 import { ErrorNotice } from "./Shell";
 
@@ -37,6 +43,8 @@ export function AiPanel({
   const [custom, setCustom] = useState("");
   const [run, setRun] = useState<Run>({ state: "idle" });
   const [showRaw, setShowRaw] = useState(false);
+  // US-24: where the running rewrite sends the slide, from its `start` event.
+  const [sendsTo, setSendsTo] = useState<AiProvider | null>(null);
   const last = useRef<RewriteInstruction | null>(null);
   const controller = useRef<AbortController | null>(null);
 
@@ -50,6 +58,7 @@ export function AiPanel({
     last.current = instruction;
     setOpen(false);
     setShowRaw(false);
+    setSendsTo(null);
     let text = "";
     let notice: string | null = null;
     setRun({ state: "running", text, notice });
@@ -58,7 +67,8 @@ export function AiPanel({
         { deckId, slideId, baseHash, instruction, ...(avoid?.length ? { avoid } : {}) },
         ({ event, data }) => {
           if (abort.signal.aborted) return;
-          if (event === "token") {
+          if (event === "start") setSendsTo(data.provider);
+          else if (event === "token") {
             text += data.text;
             setRun({ state: "running", text, notice });
           } else if (event === "notice") {
@@ -146,6 +156,7 @@ export function AiPanel({
           {run.state === "running" ? (
             <>
               <p className="status">Asking the model…</p>
+              <SendsTo provider={sendsTo} />
               <pre className="ai-tokens" data-testid="ai-tokens">
                 {run.text}
               </pre>

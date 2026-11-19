@@ -10,6 +10,7 @@ import { SettingsStore } from "../src/server/settings.js";
 import { TMP_DIR } from "../src/server/workspace.js";
 import {
   AiFailedEventSchema,
+  AiStartEventSchema,
   GenerateDoneEventSchema,
   GenerateNoticeEventSchema,
   GenerateRepairEventSchema,
@@ -33,6 +34,7 @@ const lines = (...slides: object[]): LlmFixture => ({
   text: `Here you go:\n${slides.map((slide) => JSON.stringify(slide)).join("\n")}\n`,
 });
 const SCHEMAS: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {
+  start: AiStartEventSchema,
   slide: GenerateSlideEventSchema,
   repair: GenerateRepairEventSchema,
   notice: GenerateNoticeEventSchema,
@@ -80,6 +82,7 @@ async function events(response: Response) {
   return list;
 }
 
+const LOCAL = { id: "local", label: "Local", kind: "local" };
 const names = (list: { event: string }[]) => list.map((item) => item.event);
 
 describe("generate-deck prompt", () => {
@@ -131,9 +134,14 @@ describe("POST /api/ai/generate-deck", () => {
   it("streams slides then done when the deck passes on the first try", async () => {
     const { generate, root, fake } = await setup({ chat: [lines(COVER, timeline(1), timeline(2))] });
     const list = await events(await generate());
-    expect(names(list)).toEqual(["slide", "slide", "slide", "done"]);
-    expect(list[1]!.data).toMatchObject({ index: 1, draft: { type: "timeline" } });
-    expect(list.at(-1)!.data).toEqual({ deckId: encodeDeckId("guide"), violations: [], model: "stub-model" });
+    expect(names(list)).toEqual(["start", "slide", "slide", "slide", "done"]);
+    expect(list[2]!.data).toMatchObject({ index: 1, draft: { type: "timeline" } });
+    expect(list.at(-1)!.data).toEqual({
+      deckId: encodeDeckId("guide"),
+      violations: [],
+      model: "stub-model",
+      provider: LOCAL,
+    });
     const { presentation, violations } = await loadPresentation(path.join(root, "guide"), {
       blueprint: "evaluate",
     });
@@ -148,8 +156,8 @@ describe("POST /api/ai/generate-deck", () => {
       chat: [lines(COVER, timeline(1), timeline(2, 7)), { kind: "json", value: timeline(2) }],
     });
     const list = await events(await generate());
-    expect(names(list)).toEqual(["slide", "slide", "slide", "repair", "done"]);
-    expect(list[3]!.data.violations).toEqual([expect.objectContaining({ code: "MAX_ITEMS" })]);
+    expect(names(list)).toEqual(["start", "slide", "slide", "slide", "repair", "done"]);
+    expect(list[4]!.data.violations).toEqual([expect.objectContaining({ code: "MAX_ITEMS" })]);
     expect(list.at(-1)!.data.violations).toEqual([]);
     expect(fake.requests).toHaveLength(2);
     const repair = fake.requests[1]!.messages.at(-1)!.content;
@@ -163,8 +171,8 @@ describe("POST /api/ai/generate-deck", () => {
       chat: [lines(timeline(1), COVER), { kind: "text", text: '{"keep": 1}\n{"keep": 0}\n' }],
     });
     const list = await events(await generate());
-    expect(names(list)).toEqual(["slide", "slide", "repair", "done"]);
-    expect(list[2]!.data.violations.map((violation: { code: string }) => violation.code)).toContain("ORDER");
+    expect(names(list)).toEqual(["start", "slide", "slide", "repair", "done"]);
+    expect(list[3]!.data.violations.map((violation: { code: string }) => violation.code)).toContain("ORDER");
     expect(list.at(-1)!.data.violations).toEqual([]);
     const { presentation } = await loadPresentation(path.join(root, "guide"), { blueprint: "evaluate" });
     expect(presentation.slides.map((slide) => slide.title)).toEqual(["Reading guide", "Phase 1"]);
@@ -176,7 +184,7 @@ describe("POST /api/ai/generate-deck", () => {
       chat: [lines(COVER, timeline(1, 8)), { kind: "json", value: timeline(1, 9) }],
     });
     const list = await events(await generate());
-    expect(names(list)).toEqual(["slide", "slide", "repair", "done"]);
+    expect(names(list)).toEqual(["start", "slide", "slide", "repair", "done"]);
     expect(list.at(-1)!.data.violations).toEqual([expect.objectContaining({ code: "MAX_ITEMS" })]);
     await expect(fs.access(path.join(root, "guide", "presentation.yml"))).resolves.toBeUndefined();
   });
@@ -184,7 +192,7 @@ describe("POST /api/ai/generate-deck", () => {
   it("makes no repair round when maxRepairRounds is 0", async () => {
     const { generate } = await setup({ chat: [lines(COVER, timeline(1, 8))] }, 0);
     const list = await events(await generate());
-    expect(names(list)).toEqual(["slide", "slide", "done"]);
+    expect(names(list)).toEqual(["start", "slide", "slide", "done"]);
   });
 
   it("writes a single-file deck too", async () => {
@@ -196,6 +204,7 @@ describe("POST /api/ai/generate-deck", () => {
       deckId: encodeDeckId("guide.slide.md"),
       violations: [],
       model: "stub-model",
+      provider: LOCAL,
     });
     const text = await fs.readFile(path.join(root, "guide.slide.md"), "utf8");
     expect(text.indexOf("# Reading guide")).toBeLessThan(text.indexOf("# Phase 1"));
@@ -301,7 +310,11 @@ describe("POST /api/ai/generate-deck", () => {
     const before = await listing();
     const list = await events(await generate());
     expect(list).toEqual([
-      { event: "failed", data: { error: expect.objectContaining({ code: "LLM_BAD_OUTPUT" }) } },
+      { event: "start", data: { provider: LOCAL, model: "stub-model" } },
+      {
+        event: "failed",
+        data: { error: expect.objectContaining({ code: "LLM_BAD_OUTPUT" }), provider: LOCAL },
+      },
     ]);
     expect(await listing()).toEqual(before);
   });

@@ -279,6 +279,7 @@ describe("POST /api/ai/draft-kit", () => {
         await request("/api/ai/draft-kit", { kind, name, description: "Something calm." }),
       );
       expect(events.map((event) => event.event).filter((event) => event !== "token")).toEqual([
+        "start",
         "proposal",
         "done",
       ]);

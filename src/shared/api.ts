@@ -36,6 +36,8 @@ export const ERROR_CODES = [
   "LLM_BAD_OUTPUT",
   "LLM_RATE_LIMITED",
   "LLM_NO_CREDIT",
+  // US-24: a task points to a paid provider that was removed.
+  "LLM_PROVIDER_MISSING",
   "CANCELLED",
   "PROPOSAL_NOT_FOUND",
   "STALE_PROPOSAL",
@@ -424,21 +426,31 @@ export const AI_TASK_LABELS: Record<AiTask, string> = {
   chat: "Chat",
 };
 const MODEL_ID = z.string().trim().min(1, "Pick a model.").max(200);
+// US-24 (D32): a task model is a local model ID (a string, as in D29) or a paid provider's model.
+export const PaidTaskModelSchema = z
+  .object({
+    provider: z.string().regex(/^[a-z0-9-]{1,40}$/, "Not a provider ID."),
+    model: MODEL_ID,
+  })
+  .strict();
+export type PaidTaskModel = z.infer<typeof PaidTaskModelSchema>;
+export const TaskModelSchema = z.union([MODEL_ID, PaidTaskModelSchema]);
+export type TaskModel = z.infer<typeof TaskModelSchema>;
 /** A model per AI task; a missing key uses the default `model`. */
 export const TaskModelsSchema = z.object({
-  rewrite: MODEL_ID.optional(),
-  generate: MODEL_ID.optional(),
-  draft: MODEL_ID.optional(),
-  chat: MODEL_ID.optional(),
+  rewrite: TaskModelSchema.optional(),
+  generate: TaskModelSchema.optional(),
+  draft: TaskModelSchema.optional(),
+  chat: TaskModelSchema.optional(),
 });
 export type TaskModels = z.infer<typeof TaskModelsSchema>;
-/** In PUT /api/settings: a model ID sets a task, null clears it, a key left out is kept. */
+/** In PUT /api/settings: a model sets a task, null clears it, a key left out is kept. */
 const TaskModelsPatchSchema = z
   .object({
-    rewrite: MODEL_ID.nullable().optional(),
-    generate: MODEL_ID.nullable().optional(),
-    draft: MODEL_ID.nullable().optional(),
-    chat: MODEL_ID.nullable().optional(),
+    rewrite: TaskModelSchema.nullable().optional(),
+    generate: TaskModelSchema.nullable().optional(),
+    draft: TaskModelSchema.nullable().optional(),
+    chat: TaskModelSchema.nullable().optional(),
   })
   .strict();
 export type TaskModelsPatch = z.infer<typeof TaskModelsPatchSchema>;
@@ -534,6 +546,8 @@ export const SettingsSchema = z.object({
   /** US-21: paid providers; missing means none. */
   providers: z.array(ProviderSchema).optional(),
   git: z.object({ author: GitAuthorSchema.optional() }).optional(),
+  /** US-24: paid task models kept while there's no local LLM (`llm: null`); moved back into `llm.taskModels` when one is set up. */
+  paidTaskModels: TaskModelsSchema.optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 /** GET /api/settings: Settings with each provider as a ProviderView (keys never leave the server). */
@@ -810,6 +824,18 @@ export const ChatDoneEventSchema = z.object({
   /** The model that ran (US-19). */
   model: z.string().optional(),
 });
+
+// US-24: where an AI task's content goes. Every AI stream starts with `start`, and its `done` and
+// `failed` events carry the same `provider`.
+export const LOCAL_AI_PROVIDER = { id: "local", label: "Local", kind: "local" } as const;
+export const AiProviderSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(["local", ...PROVIDER_KINDS]),
+});
+export type AiProvider = z.infer<typeof AiProviderSchema>;
+export const AiStartEventSchema = z.object({ provider: AiProviderSchema, model: z.string() });
+export type AiStartEvent = z.infer<typeof AiStartEventSchema>;
 
 // US-23: version history (tech-spec D36, D37, D43). A Version is one commit that touches the deck.
 export const VersionSchema = z.object({
