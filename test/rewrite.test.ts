@@ -8,7 +8,7 @@ import { resetResponseFormatMemory } from "../src/server/llm/provider.js";
 import { encodeDeckId } from "../src/server/paths.js";
 import { SettingsStore } from "../src/server/settings.js";
 import type { LlmScript } from "./support/llm-fixtures.js";
-import type { RewriteInstruction, SlideDraft } from "../src/shared/api.js";
+import { LOCAL_AI_PROVIDER, type RewriteInstruction, type SlideDraft } from "../src/shared/api.js";
 import { FakeProvider } from "./support/fake-provider.js";
 import { startLlmStub, type LlmStub } from "./support/llm-stub.js";
 import { sseEvents } from "./support/sse.js";
@@ -24,6 +24,7 @@ const DECK = {
 };
 const SLIDE = "slides/01_cover.slide.md";
 const deckId = encodeDeckId("deck");
+const LOCAL = { ...LOCAL_AI_PROVIDER };
 const INSTRUCTIONS: RewriteInstruction[] = [
   { kind: "shorten" },
   { kind: "expand" },
@@ -114,7 +115,7 @@ describe("POST /api/ai/rewrite", () => {
           violations: [],
         }),
       ]);
-      expect(events.at(-1)).toEqual({ event: "done", data: { model: "stub-model" } });
+      expect(events.at(-1)).toEqual({ event: "done", data: { model: "stub-model", provider: LOCAL } });
       expect(await fs.readFile(file, "utf8")).toBe(before);
       const prompt = fake.requests[0]!.messages.at(-1)!.content;
       if (instruction.kind === "translate") expect(prompt).toContain("Portuguese");
@@ -193,7 +194,10 @@ describe("POST /api/ai/rewrite", () => {
     const { rewrite } = await setup(reply("# Cover\n\nOur product saves time."));
     const events = await sseEvents(await rewrite({ kind: "shorten" }));
     expect(events.map((event) => event.event)).not.toContain("proposal");
-    expect(events.at(-1)).toEqual({ event: "done", data: { noChange: true, model: "stub-model" } });
+    expect(events.at(-1)).toEqual({
+      event: "done",
+      data: { noChange: true, model: "stub-model", provider: LOCAL },
+    });
   });
 
   it("ends with failed LLM_BAD_OUTPUT on empty output and leaves the slide alone", async () => {

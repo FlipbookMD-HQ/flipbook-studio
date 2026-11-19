@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AI_TASKS,
-  AI_TASK_LABELS,
   API_KEY_MASK,
   type AiTask,
   type ApiError,
@@ -11,8 +10,10 @@ import {
   type SettingsView,
 } from "../../shared/api";
 import { ApiRequestError, getSettings, listLlmModels, putSettings, testLlm } from "../api";
+import { decodeTaskModel, encodeTaskModel } from "../../shared/taskModels";
 import { modelMark } from "../modelMarks";
 import { ProvidersSection } from "./ProvidersSection";
+import { TaskModelPicker } from "./TaskModelPicker";
 import { ErrorNotice, Shell } from "./Shell";
 
 const PRESETS = [
@@ -56,8 +57,11 @@ export function SettingsScreen() {
   const [baseUrl, setBaseUrl] = useState("");
   const [preset, setPreset] = useState<PresetId>("ollama");
   const [model, setModel] = useState("");
-  // US-19: a model per AI task; "" means the default model.
+  // US-19: a model per AI task; "" means the default model. US-24: values are encoded task models
+  // (a local ID as is, a provider's model as JSON).
   const [taskModels, setTaskModels] = useState<Record<AiTask, string>>(NO_TASK_MODELS);
+  // US-24: each provider's chat models, for the task pickers; null while unknown.
+  const [providerModels, setProviderModels] = useState<Record<string, string[] | null>>({});
   const [apiKey, setApiKey] = useState("");
   const [keyTouched, setKeyTouched] = useState(false);
   const [temperature, setTemperature] = useState(0.2);
@@ -77,7 +81,13 @@ export function SettingsScreen() {
     setBaseUrl(url);
     setPreset(presetFor(url));
     setModel(llm?.model ?? "");
-    setTaskModels({ ...NO_TASK_MODELS, ...(llm?.taskModels ?? {}) });
+    const saved = (llm ? llm.taskModels : settings.data.paidTaskModels) ?? {};
+    setTaskModels(
+      Object.fromEntries(AI_TASKS.map((task) => [task, encodeTaskModel(saved[task])])) as Record<
+        AiTask,
+        string
+      >,
+    );
     setApiKey(llm?.apiKey ? API_KEY_MASK : "");
     setKeyTouched(false);
     if (llm) {
@@ -91,6 +101,23 @@ export function SettingsScreen() {
     // edits here survive it); refreshModels only reads values set just above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.data?.llm]);
+
+  // US-24: list each provider's chat models for the task pickers (again when providers change).
+  const providerIds = (settings.data?.providers ?? []).map((provider) => provider.id).join(",");
+  useEffect(() => {
+    if (!providerIds) return;
+    let current = true;
+    for (const id of providerIds.split(","))
+      listLlmModels({ providerId: id })
+        .then((response) => response.models.map((item) => item.id))
+        .catch(() => null)
+        .then((ids) => {
+          if (current) setProviderModels((old) => ({ ...old, [id]: ids }));
+        });
+    return () => {
+      current = false;
+    };
+  }, [providerIds]);
 
   // The key to send for an unsaved connection: left out keeps the saved one.
   const keyForRequest = () => (keyTouched ? apiKey || null : undefined);
@@ -145,7 +172,7 @@ export function SettingsScreen() {
           temperature,
           timeoutMs: timeoutS * 1000,
           maxRepairRounds: repairRounds,
-          taskModels: Object.fromEntries(AI_TASKS.map((task) => [task, taskModels[task] || null])),
+          taskModels: Object.fromEntries(AI_TASKS.map((task) => [task, decodeTaskModel(taskModels[task])])),
         },
       });
       queryClient.setQueryData(["settings"], next);
@@ -345,40 +372,22 @@ export function SettingsScreen() {
             <fieldset className="task-models" data-testid="task-models">
               <legend>Model for each task</legend>
               <p className="muted">
-                Use a small model for quick edits and a larger one for whole decks. Every task uses this
-                server.
+                Use a small model for quick edits and a larger one for whole decks. &ldquo;Same as
+                default&rdquo; is the local model above. A provider&apos;s model sends that task&apos;s
+                content to the provider; nothing falls back to another one.
               </p>
-              {AI_TASKS.map((task) => {
-                const chosen = taskModels[task];
-                const mark = modelMark(chosen, models);
-                const missing = Boolean(mark);
-                const choices = [...new Set([...(chosen ? [chosen] : []), ...(models ?? [])])];
-                return (
-                  <label key={task} className="field compact">
-                    <span>{AI_TASK_LABELS[task]}</span>
-                    <select
-                      aria-label={`Model for ${AI_TASK_LABELS[task]}`}
-                      value={chosen}
-                      aria-invalid={missing ? "true" : undefined}
-                      onChange={(event) => setTaskModels({ ...taskModels, [task]: event.target.value })}
-                    >
-                      <option value="">Same as default{model ? ` (${model})` : ""}</option>
-                      {choices.map((id) => (
-                        <option key={id} value={id}>
-                          {id === chosen && mark ? `${id} (${mark})` : id}
-                        </option>
-                      ))}
-                    </select>
-                    {missing ? (
-                      <small className="field-error" data-testid={`task-model-missing-${task}`}>
-                        {mark === "not a chat model"
-                          ? `${chosen} is not a chat model. Pick another model.`
-                          : `${chosen} isn't on this server. Pick another model, or install it.`}
-                      </small>
-                    ) : null}
-                  </label>
-                );
-              })}
+              {AI_TASKS.map((task) => (
+                <TaskModelPicker
+                  key={task}
+                  task={task}
+                  value={taskModels[task]}
+                  defaultModel={model}
+                  localModels={models}
+                  providers={settings.data.providers ?? []}
+                  providerModels={providerModels}
+                  onChange={(value) => setTaskModels({ ...taskModels, [task]: value })}
+                />
+              ))}
             </fieldset>
           </div>
           <div className="settings-card" id="bounds">

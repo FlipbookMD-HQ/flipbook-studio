@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ApiRequestError, createDeck, importDeck, saveGeneratedDeck } from "../api";
 import type { CreateDeckRequest, GenerateDeckRequest, KitRef, SourceDocument } from "../../shared/api";
-import { AiAction, useLlmStatus } from "../ai";
+import { AiAction, SendsTo, useLlmStatus } from "../ai";
 import { FromFile } from "./FromFile";
 import { GenerateProgress, useOpenDeck } from "./GenerateProgress";
 
@@ -52,6 +52,9 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
   const [fileAction, setFileAction] = useState<"import" | "ai">("import");
   const [keptRun, setKeptRun] = useState<string | null>(null);
   const llm = useLlmStatus();
+  // US-24: generating (also from a file) can run on a paid model, without a local one.
+  const generateTarget = llm.targetFor("generate");
+  const aiReady = Boolean(generateTarget);
   const openDeck = useOpenDeck();
   const [sourceKind, setSourceKind] = useState<"topic" | "text">("topic");
   const [source, setSource] = useState("");
@@ -309,15 +312,16 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
                   type="radio"
                   name="file-action"
                   checked={fileAction === "ai"}
-                  disabled={!llm.configured}
+                  disabled={!aiReady}
                   onChange={() => setFileAction("ai")}
                 />
                 Convert with AI{" "}
                 <small className="hint">
-                  {llm.configured
-                    ? "your local model fits it to the kit; facts, order and language are kept"
+                  {aiReady
+                    ? `${generateTarget?.provider && generateTarget.provider.kind !== "local" ? generateTarget.model : "your local model"} fits it to the kit; facts, order and language are kept`
                     : "Connect a model in Settings"}
-                </small>
+                </small>{" "}
+                {aiReady ? <SendsTo provider={generateTarget?.provider} /> : null}
               </label>
               {fileAction === "import" && group ? (
                 <p className="notice" role="note">
@@ -434,9 +438,7 @@ export function NewDeckDialog({ kits, onClose }: { kits: KitRef[]; onClose: () =
             <button
               type="submit"
               className="primary"
-              disabled={
-                running || imported.isPending || !fileSource || (fileAction === "ai" && !llm.configured)
-              }
+              disabled={running || imported.isPending || !fileSource || (fileAction === "ai" && !aiReady)}
             >
               {imported.isPending
                 ? "Importing…"

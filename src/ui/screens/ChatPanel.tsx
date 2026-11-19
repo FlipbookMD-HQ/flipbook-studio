@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { ApiError, ApplyProposalResponse, DeckDetail, Proposal, ProposalOp } from "../../shared/api";
+import type {
+  AiProvider,
+  ApiError,
+  ApplyProposalResponse,
+  DeckDetail,
+  Proposal,
+  ProposalOp,
+} from "../../shared/api";
 import { ApiRequestError, chatDeck } from "../api";
-import { AiAction, useLlmStatus } from "../ai";
+import { AiAction, SendsTo, useLlmStatus } from "../ai";
 import { ProposalReview } from "./ProposalReview";
 import { ErrorNotice } from "./Shell";
 
@@ -18,6 +25,8 @@ type Entry =
       done: boolean;
       /** The model that answered (US-19). */
       model?: string;
+      /** US-24: where this turn was sent, from its `start` event. */
+      provider?: AiProvider;
     };
 
 interface ChatState {
@@ -66,7 +75,9 @@ export function ChatPanel({
   slideId: string;
   onApplied: (result: ApplyProposalResponse) => void;
 }) {
-  const { configured } = useLlmStatus();
+  const { targetFor } = useLlmStatus();
+  // US-24: a chat on a paid model works without a local model.
+  const configured = Boolean(targetFor("chat"));
   const [open, setOpen] = useState(false);
   const [chat, setChatState] = useState<ChatState>(() => memory.get(deck.id) ?? empty());
   const [message, setMessage] = useState("");
@@ -121,7 +132,8 @@ export function ChatPanel({
       await chatDeck(
         { deckId: deck.id, sessionId: chat.sessionId, message: text, slideId },
         ({ event, data }) => {
-          if (event === "token") {
+          if (event === "start") updateLast({ provider: data.provider });
+          else if (event === "token") {
             reply += data.text;
             updateLast({ text: reply });
           } else if (event === "notice") {
@@ -184,6 +196,7 @@ export function ChatPanel({
                 <li key={index} className="chat-assistant" data-testid="chat-assistant">
                   {entry.text ? <p className="chat-text">{entry.text}</p> : null}
                   {!entry.done && !entry.text ? <p className="muted">Thinking…</p> : null}
+                  {!entry.done ? <SendsTo provider={entry.provider} /> : null}
                   {entry.notices.map((notice) => (
                     <p key={notice} className="notice" role="status" data-testid="chat-notice">
                       {notice}

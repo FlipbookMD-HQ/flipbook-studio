@@ -5,6 +5,7 @@ import {
   AI_TASKS,
   API_KEY_MASK,
   type TaskModels,
+  type TaskModelsPatch,
   SettingsSchema,
   type LlmSettings,
   type Settings,
@@ -13,8 +14,17 @@ import {
   type ProviderView,
   type SettingsView,
 } from "../shared/api.js";
+import { paidModel } from "../shared/taskModels.js";
 import { StudioError } from "./errors.js";
 import { apiKeyHint } from "./llm/keys.js";
+
+/** The task models that point to a paid provider, or undefined when there are none (US-24). */
+function paidOnly(taskModels: TaskModels | undefined): TaskModels | undefined {
+  const paid = Object.fromEntries(
+    Object.entries(taskModels ?? {}).filter(([, value]) => paidModel(value)),
+  ) as TaskModels;
+  return Object.keys(paid).length ? paid : undefined;
+}
 
 export const DEFAULT_SETTINGS: Settings = { version: 1, llm: null, lastWorkspace: null };
 export const LLM_DEFAULTS: Omit<LlmSettings, "baseUrl"> = {
@@ -116,10 +126,21 @@ export class SettingsStore {
     if (this.locked) throw new StudioError(409, "SETTINGS_UNSUPPORTED", this.locked);
     const next: Settings = { ...this.settings };
     if (patch.lastWorkspace !== undefined) next.lastWorkspace = patch.lastWorkspace;
-    if (patch.llm === null) next.llm = null;
-    else if (patch.llm) {
+    if (patch.llm === null) {
+      // US-24: removing the local LLM clears only the local task models; paid ones are kept aside.
+      next.llm = null;
+      const paid = paidOnly(this.settings.llm?.taskModels ?? this.settings.paidTaskModels);
+      if (paid) next.paidTaskModels = paid;
+      else delete next.paidTaskModels;
+    } else if (patch.llm) {
       const { apiKey, taskModels, ...rest } = patch.llm;
-      const base = this.settings.llm ?? (rest.baseUrl ? { baseUrl: rest.baseUrl, ...LLM_DEFAULTS } : null);
+      if (taskModels) this.checkProviders(taskModels);
+      const kept = this.settings.paidTaskModels;
+      const base =
+        this.settings.llm ??
+        (rest.baseUrl
+          ? { baseUrl: rest.baseUrl, ...LLM_DEFAULTS, ...(kept ? { taskModels: kept } : {}) }
+          : null);
       if (!base)
         throw new StudioError(422, "VALIDATION_FAILED", "Set a base URL to connect an LLM.", {
           details: { fields: [{ path: "llm.baseUrl", message: "Required." }] },
@@ -138,6 +159,7 @@ export class SettingsStore {
         if (Object.keys(merged).length) next.llm.taskModels = merged;
         else delete next.llm.taskModels;
       }
+      delete next.paidTaskModels;
     }
     // US-23: the commit author used only when git config has none; null forgets it.
     if (patch.git) {
@@ -148,6 +170,19 @@ export class SettingsStore {
     await this.write(valid);
     this.settings = valid;
     return valid;
+  }
+
+  /** US-24: a task model may only name a provider that exists (a removed one is kept, but not set anew). */
+  private checkProviders(taskModels: TaskModelsPatch) {
+    const known = new Set((this.settings.providers ?? []).map((provider) => provider.id));
+    const fields = AI_TASKS.flatMap((task) => {
+      const paid = paidModel(taskModels[task]);
+      return paid && !known.has(paid.provider)
+        ? [{ path: `llm.taskModels.${task}.provider`, message: `There's no provider "${paid.provider}".` }]
+        : [];
+    });
+    if (fields.length)
+      throw new StudioError(422, "VALIDATION_FAILED", fields[0]!.message, { details: { fields } });
   }
 
   /** US-21: replaces the paid providers and writes the file. An empty list leaves no `providers` key. */

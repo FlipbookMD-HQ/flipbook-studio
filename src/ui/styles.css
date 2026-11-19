@@ -620,6 +620,12 @@ button:disabled {
 .warning {
   color: #f5c66b;
 }
+/* US-24: where an AI task sends deck content (a paid provider). */
+.sends-to {
+  display: block;
+  color: #f5c66b;
+  font-size: 0.8rem;
+}
 .topbar {
   flex-wrap: wrap;
   row-gap: 0.5rem;

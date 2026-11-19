@@ -42,6 +42,8 @@ import {
   TOKEN_META,
   WorkspaceSchema,
   type ApiError,
+  type AiProvider,
+  type AiStartEvent,
   ApplyProposalResponseSchema,
   type RewriteRequest,
   type Proposal,
@@ -272,6 +274,8 @@ export const testLlm = (request: LlmTestRequest) =>
 
 /** One event of an AI stream (US-12 to US-15). */
 export type AiEvent =
+  /** US-24: first, where the content goes. */
+  | { event: "start"; data: AiStartEvent }
   | { event: "token"; data: { text: string } }
   | { event: "notice"; data: { message: string } }
   | { event: "proposal"; data: Proposal }
@@ -285,9 +289,10 @@ export type AiEvent =
         violations?: Violation[];
         sessionId?: string;
         model?: string;
+        provider?: AiProvider;
       };
     }
-  | { event: "failed"; data: { error: ApiError } };
+  | { event: "failed"; data: { error: ApiError; provider?: AiProvider } };
 
 /**
  * POSTs to an AI endpoint and reads its server-sent events until `done` or `failed`. A non-stream
