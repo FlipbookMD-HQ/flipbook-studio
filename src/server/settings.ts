@@ -9,8 +9,12 @@ import {
   type LlmSettings,
   type Settings,
   type SettingsPatch,
+  type Provider,
+  type ProviderView,
+  type SettingsView,
 } from "../shared/api.js";
 import { StudioError } from "./errors.js";
+import { apiKeyHint } from "./llm/keys.js";
 
 export const DEFAULT_SETTINGS: Settings = { version: 1, llm: null, lastWorkspace: null };
 export const LLM_DEFAULTS: Omit<LlmSettings, "baseUrl"> = {
@@ -36,10 +40,18 @@ export function configDir(env: NodeJS.ProcessEnv = process.env, platform = proce
   return path.join(xdg && path.isAbsolute(xdg) ? xdg : path.join(home, ".config"), "flipbook-studio");
 }
 
-/** Settings as the API returns them: the apiKey masked. */
-export function maskSettings(settings: Settings): Settings {
-  if (!settings.llm) return settings;
-  return { ...settings, llm: { ...settings.llm, apiKey: settings.llm.apiKey ? API_KEY_MASK : null } };
+/** A provider as the API returns it: no key, only its hint (US-21, D34). */
+export function providerView({ apiKey, ...provider }: Provider): ProviderView {
+  return { ...provider, apiKeyHint: apiKeyHint(apiKey) };
+}
+
+/** Settings as the API returns them: the apiKey masked, and providers as ProviderViews. */
+export function maskSettings(settings: Settings): SettingsView {
+  const view: SettingsView = settings.providers
+    ? { ...settings, providers: settings.providers.map(providerView) }
+    : (settings as SettingsView);
+  if (!view.llm) return view;
+  return { ...view, llm: { ...view.llm, apiKey: view.llm.apiKey ? API_KEY_MASK : null } };
 }
 
 /** One settings.json, read at startup and written atomically (folder 0700, file 0600). */
@@ -131,6 +143,24 @@ export class SettingsStore {
     await this.write(valid);
     this.settings = valid;
     return valid;
+  }
+
+  /** US-21: replaces the paid providers and writes the file. An empty list leaves no `providers` key. */
+  async setProviders(providers: Provider[]): Promise<Settings> {
+    if (this.locked) throw new StudioError(409, "SETTINGS_UNSUPPORTED", this.locked);
+    const next: Settings = { ...this.settings, providers };
+    if (!providers.length) delete next.providers;
+    const valid = SettingsSchema.parse(next);
+    await this.write(valid);
+    this.settings = valid;
+    return valid;
+  }
+
+  /** Every stored API key (the local one and each provider's), for the scrubber. */
+  apiKeys(): string[] {
+    return [this.settings.llm?.apiKey, ...(this.settings.providers ?? []).map((p) => p.apiKey)].filter(
+      (key): key is string => Boolean(key),
+    );
   }
 
   private async write(settings: Settings) {

@@ -13,7 +13,10 @@ import {
   type CopyKitRequest,
   KitPreviewResponseSchema,
   RenameGroupResponseSchema,
-  SettingsSchema,
+  SettingsViewSchema,
+  ProviderViewSchema,
+  type CreateProviderRequest,
+  type UpdateProviderRequest,
   LlmModelsResponseSchema,
   LlmTestResponseSchema,
   type SettingsPatch,
@@ -241,9 +244,19 @@ export const copyKit = (kind: KitKind, name: string, request: CopyKitRequest) =>
   });
 
 // US-11: settings and the local LLM.
-export const getSettings = () => apiFetch("/api/settings", SettingsSchema);
+export const getSettings = () => apiFetch("/api/settings", SettingsViewSchema);
 export const putSettings = (patch: SettingsPatch) =>
-  apiFetch("/api/settings", SettingsSchema, { method: "PUT", body: JSON.stringify(patch) });
+  apiFetch("/api/settings", SettingsViewSchema, { method: "PUT", body: JSON.stringify(patch) });
+// US-21: paid providers. Responses carry the key only as a hint.
+export const createProvider = (request: CreateProviderRequest) =>
+  apiFetch("/api/providers", ProviderViewSchema, { method: "POST", body: JSON.stringify(request) });
+export const updateProvider = (id: string, request: UpdateProviderRequest) =>
+  apiFetch(`/api/providers/${encodeURIComponent(id)}`, ProviderViewSchema, {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
+export const deleteProvider = (id: string) =>
+  apiFetch(`/api/providers/${encodeURIComponent(id)}`, z.undefined(), { method: "DELETE" });
 export const listLlmModels = (request: LlmModelsRequest, signal?: AbortSignal) =>
   apiFetch("/api/llm/models", LlmModelsResponseSchema, {
     method: "POST",

@@ -22,7 +22,7 @@ export class FakeProvider implements LlmProvider {
   async listModels() {
     const models = this.script.models ?? ["stub-model"];
     if (!Array.isArray(models)) throw this.statusError(models.status);
-    return models.map((id) => ({ id }));
+    return models.map((model) => ({ id: typeof model === "string" ? model : model.id }));
   }
 
   async *chat(request: ChatRequest): AsyncIterable<ChatEvent> {
