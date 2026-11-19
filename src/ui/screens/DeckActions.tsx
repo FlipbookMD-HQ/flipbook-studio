@@ -6,6 +6,7 @@ import type {
   ExportRequest,
   ExportsInfo,
   RestoreResponse,
+  SlideRestoreResponse,
   UndoResponse,
   Violation,
 } from "../../shared/api";
@@ -32,6 +33,7 @@ export function DeckActions({
   undoBlocked,
   onUndo,
   onRestored,
+  onSlideRestored,
 }: {
   deckId: string;
   slideIndex: number;
@@ -41,6 +43,8 @@ export function DeckActions({
   onUndo?: (result: UndoResponse) => void;
   /** US-26: after Restore deck or Discard changes rewrote the deck's files. */
   onRestored?: (result: RestoreResponse) => void;
+  /** US-27: after Restore this slide put one slide back from a version. */
+  onSlideRestored?: (result: SlideRestoreResponse) => void;
 }) {
   const [presentError, setPresentError] = useState<ApiError | null>(null);
   const [announcerUrl, setAnnouncerUrl] = useState<string | null>(null);
@@ -69,7 +73,12 @@ export function DeckActions({
   return (
     <>
       <UndoControls deckId={deckId} blocked={undoBlocked} onChanged={onUndo} />
-      <HistoryControl deckId={deckId} blocked={undoBlocked} onRestored={onRestored} />
+      <HistoryControl
+        deckId={deckId}
+        blocked={undoBlocked}
+        onRestored={onRestored}
+        onSlideRestored={onSlideRestored}
+      />
       <button type="button" onClick={present} disabled={disabled}>
         Present
       </button>
