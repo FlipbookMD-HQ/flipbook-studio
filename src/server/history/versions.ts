@@ -19,7 +19,7 @@ export interface HistoryDeps {
   author: () => Promise<GitAuthor | undefined>;
 }
 
-type Located =
+export type Located =
   | { kind: "no-git"; reason: string }
   | { kind: "no-repo" }
   | { kind: "unsupported"; reason: string; repoRoot: string | null }
@@ -40,7 +40,7 @@ const MAX_CACHED = 5000;
 const deckDir = (deck: DeckEntry) => journalRoot(deck);
 
 /** Finds the repository a deck is in, and whether Studio can work with it. */
-async function locate(deck: DeckEntry, git: GitRunner): Promise<Located> {
+export async function locate(deck: DeckEntry, git: GitRunner): Promise<Located> {
   const available = await git.check();
   if (!available.ok) return { kind: "no-git", reason: available.reason };
   const cwd = deckDir(deck);
@@ -128,7 +128,7 @@ async function locate(deck: DeckEntry, git: GitRunner): Promise<Located> {
  * deck's folder minus dist, exports, node_modules and the temp folder; a single-file deck's
  * file plus the files in the shared `assets/` folder it references (that exist or are tracked).
  */
-async function pathspecIn(
+export async function pathspecIn(
   deck: DeckEntry,
   repo: { repoRoot: string; deckRel: string },
   git: GitRunner,
