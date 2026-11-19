@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ViolationBadge, ViolationsPanel, violationsFor } from "./Violations";
 import { ApiRequestError, getDeck } from "../api";
 import { ErrorNotice, Shell } from "./Shell";
@@ -15,6 +15,7 @@ export function DeckScreen() {
   const duplicated = useLocation().state as { duplicatedFrom?: string; skipped?: string[] } | null;
   const [view, setView] = useState<"grid" | "list">("grid");
   const [zoom, setZoom] = useState(1);
+  const navigate = useNavigate();
 
   if (deck.isPending) return <Shell>Loading deck…</Shell>;
   if (deck.isError) {
@@ -45,7 +46,14 @@ export function DeckScreen() {
       actions={
         <>
           <DuplicateDeckButton deckId={deck.data.id} />
-          <DeckActions deckId={deck.data.id} slideIndex={0} />
+          <DeckActions
+            deckId={deck.data.id}
+            slideIndex={0}
+            onSlideRestored={(result) =>
+              // US-27: open the restored slide in the editor.
+              navigate(`/decks/${deck.data.id}/slides/${encodeURIComponent(result.slideId)}`)
+            }
+          />
         </>
       }
     >

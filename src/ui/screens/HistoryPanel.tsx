@@ -7,6 +7,7 @@ import {
   type GitAuthor,
   type HistoryState,
   type RestoreResponse,
+  type SlideRestoreResponse,
   type Version,
 } from "../../shared/api";
 import {
@@ -23,6 +24,7 @@ import {
 import { DECK_WRITTEN } from "../undo";
 import { ErrorNotice } from "./Shell";
 import { assetsKey } from "./ImagesPanel";
+import { VersionView } from "./VersionView";
 
 // US-23: Save version and the timeline, in the deck editor's top bar.
 
@@ -214,6 +216,7 @@ export function Timeline({
   onLoadMore,
   onRestore,
   restoreBlocked,
+  onView,
 }: {
   versions: Version[];
   hasMore: boolean;
@@ -223,6 +226,8 @@ export function Timeline({
   onRestore?: (version: Version) => void;
   /** Why Restore deck is disabled right now (unsaved edits, busy), if it is. */
   restoreBlocked?: string | null;
+  /** US-27: opens the version's slides (left out when not given). */
+  onView?: (version: Version) => void;
 }) {
   if (!versions.length) return <p className="muted">No versions yet.</p>;
   return (
@@ -235,6 +240,16 @@ export function Timeline({
               <time dateTime={version.time}>{new Date(version.time).toLocaleString()}</time> ·{" "}
               {version.author} · {slidesText(version.slidesChanged)} · <code>{version.sha.slice(0, 7)}</code>
             </span>
+            {onView ? (
+              <button
+                type="button"
+                className="history-restore"
+                aria-label={`View slides of ${version.note}`}
+                onClick={() => onView(version)}
+              >
+                View slides
+              </button>
+            ) : null}
             {onRestore ? (
               <button
                 type="button"
@@ -357,10 +372,13 @@ export function HistoryControl({
   deckId,
   blocked,
   onRestored,
+  onSlideRestored,
 }: {
   deckId: string;
   blocked?: string | null;
   onRestored?: (result: RestoreResponse) => void;
+  /** US-27: after Restore this slide. */
+  onSlideRestored?: (result: SlideRestoreResponse) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -373,6 +391,7 @@ export function HistoryControl({
           deckId={deckId}
           blocked={blocked}
           onRestored={onRestored}
+          onSlideRestored={onSlideRestored}
           onClose={() => setOpen(false)}
         />
       ) : null}
@@ -385,11 +404,13 @@ export function HistoryPanel({
   onClose,
   blocked: editsBlocked = null,
   onRestored,
+  onSlideRestored,
 }: {
   deckId: string;
   onClose: () => void;
   blocked?: string | null;
   onRestored?: (result: RestoreResponse) => void;
+  onSlideRestored?: (result: SlideRestoreResponse) => void;
 }) {
   const queryClient = useQueryClient();
   const versions = useInfiniteQuery({
@@ -410,6 +431,8 @@ export function HistoryPanel({
   // US-26: the restore being confirmed, and which question is showing.
   const [pending, setPending] = useState<{ version: Version; step: "confirm" | "dirty" } | null>(null);
   const [restored, setRestored] = useState<string | null>(null);
+  // US-27: the version whose slides are open.
+  const [viewing, setViewing] = useState<Version | null>(null);
 
   // Any deck write (or undo) can make the deck dirty again.
   useEffect(() => {
@@ -487,6 +510,15 @@ export function HistoryPanel({
     for (const queryKey of [versionsKey(deckId), assetsKey(deckId), ["workspace"]])
       void queryClient.invalidateQueries({ queryKey });
     onRestored?.(result);
+  };
+
+  /** US-27: one slide came back from a version; the deck, undo label and images changed. */
+  const applySlideRestored = (result: SlideRestoreResponse) => {
+    queryClient.setQueryData(["deck", deckId], result.deck);
+    queryClient.setQueryData(["history", deckId], result.history);
+    for (const queryKey of [versionsKey(deckId), assetsKey(deckId), ["workspace"]])
+      void queryClient.invalidateQueries({ queryKey });
+    onSlideRestored?.(result);
   };
 
   const restore = async (version: Version, expectHead: string) => {
@@ -658,7 +690,17 @@ export function HistoryPanel({
         />
       ) : null}
 
-      {history?.state === "ready" ? (
+      {history?.state === "ready" && viewing ? (
+        <VersionView
+          deckId={deckId}
+          version={viewing}
+          kind={deck.data?.kind ?? null}
+          blocked={editsBlocked}
+          onBack={() => setViewing(null)}
+          onRestored={applySlideRestored}
+        />
+      ) : null}
+      {history?.state === "ready" && !viewing ? (
         <Timeline
           versions={all}
           hasMore={Boolean(versions.hasNextPage)}
@@ -666,6 +708,10 @@ export function HistoryPanel({
           onLoadMore={() => void versions.fetchNextPage()}
           onRestore={startRestore}
           restoreBlocked={restoreBlocked}
+          onView={(version) => {
+            setPending(null);
+            setViewing(version);
+          }}
         />
       ) : null}
     </section>

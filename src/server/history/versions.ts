@@ -391,6 +391,17 @@ export class DeckHistoryService {
     return { history, versions, next: more ? versions.at(-1)!.sha : null };
   }
 
+  /** US-27: one version of the deck, or 404 VERSION_NOT_FOUND when it isn't in the deck's log. */
+  async version(deck: DeckEntry, sha: string): Promise<Version> {
+    const located = await locate(deck, this.git);
+    const missing = () =>
+      new StudioError(404, "VERSION_NOT_FOUND", "That version isn't in this deck's history.");
+    if (located.kind !== "repo") throw missing();
+    const [found] = await this.log(deck, located, await pathspecIn(deck, located, this.git), sha, 1);
+    if (found?.sha !== sha) throw missing();
+    return found;
+  }
+
   private async slidesChanged(
     deck: DeckEntry,
     repo: { repoRoot: string; deckRel: string },

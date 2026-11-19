@@ -59,6 +59,8 @@ import {
   GitInitResponseSchema,
   type GitInitRequest,
   RestoreResponseSchema,
+  VersionViewResponseSchema,
+  SlideRestoreResponseSchema,
 } from "../shared/api";
 import { z } from "zod";
 import { DECK_WRITTEN, isDeckWrite } from "./undo";
@@ -439,4 +441,30 @@ export const discardDeck = (deckId: string, expectHead: string) =>
   apiFetch(`${deckUrl(deckId)}/discard`, RestoreResponseSchema, {
     method: "POST",
     body: JSON.stringify({ expectHead }),
+  });
+
+// US-27: a past version's slides, a slide's preview (HTML for a sandboxed srcdoc frame), and
+// restoring one slide.
+export const getVersionView = (deckId: string, sha: string) =>
+  apiFetch(`${deckUrl(deckId)}/versions/${encodeURIComponent(sha)}`, VersionViewResponseSchema);
+const versionSlideUrl = (deckId: string, sha: string, slideId: string) =>
+  `${deckUrl(deckId)}/versions/${encodeURIComponent(sha)}/slides/${encodeURIComponent(slideId)}`;
+export async function getVersionPreview(deckId: string, sha: string, slideId: string): Promise<string> {
+  const response = await fetch(`${versionSlideUrl(deckId, sha, slideId)}/preview`, {
+    headers: { [TOKEN_HEADER]: token() },
+  });
+  if (!response.ok) {
+    const envelope = ErrorEnvelopeSchema.safeParse(await response.json().catch(() => null));
+    throw new ApiRequestError(
+      response.status,
+      envelope.success
+        ? envelope.data.error
+        : { code: "INTERNAL", message: `Request failed with ${response.status}.` },
+    );
+  }
+  return response.text();
+}
+export const restoreSlide = (deckId: string, sha: string, slideId: string) =>
+  apiFetch(`${versionSlideUrl(deckId, sha, slideId)}/restore`, SlideRestoreResponseSchema, {
+    method: "POST",
   });
