@@ -44,6 +44,8 @@ import {
   type ApiError,
   type AiProvider,
   type AiStartEvent,
+  type Usage,
+  UsageResponseSchema,
   ApplyProposalResponseSchema,
   type RewriteRequest,
   type Proposal,
@@ -272,6 +274,8 @@ export const listLlmModels = (request: LlmModelsRequest, signal?: AbortSignal) =
   });
 export const testLlm = (request: LlmTestRequest) =>
   apiFetch("/api/llm/test", LlmTestResponseSchema, { method: "POST", body: JSON.stringify(request) });
+// US-25: session token totals per paid provider.
+export const getUsage = () => apiFetch("/api/usage", UsageResponseSchema);
 
 /** One event of an AI stream (US-12 to US-15). */
 export type AiEvent =
@@ -282,6 +286,8 @@ export type AiEvent =
   | { event: "proposal"; data: Proposal }
   | { event: "slide"; data: { index: number; draft: SlideDraft } }
   | { event: "repair"; data: { round: number; violations: Violation[] } }
+  /** US-25: a paid run's tokens so far, as its provider reports them. */
+  | { event: "usage"; data: { usage: Usage } }
   | {
       event: "done";
       data: {
@@ -291,9 +297,11 @@ export type AiEvent =
         sessionId?: string;
         model?: string;
         provider?: AiProvider;
+        /** US-25: tokens the provider reported, summed over repair rounds; null when none. */
+        usage?: Usage | null;
       };
     }
-  | { event: "failed"; data: { error: ApiError; provider?: AiProvider } };
+  | { event: "failed"; data: { error: ApiError; provider?: AiProvider; usage?: Usage | null } };
 
 /**
  * POSTs to an AI endpoint and reads its server-sent events until `done` or `failed`. A non-stream

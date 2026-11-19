@@ -198,6 +198,11 @@ export class AnthropicProvider implements LlmProvider {
           ? { usage: { prompt: prompt ?? 0, completion: completion ?? 0 } }
           : {}),
       });
+      // US-25: usage as it arrives, so a cancelled request still has what was reported.
+      const reportUsage = () => {
+        if (prompt != null || completion != null)
+          request.onUsage?.({ prompt: prompt ?? 0, completion: completion ?? 0 });
+      };
       for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
         watch.arm();
         buffer += decoder.decode(chunk, { stream: true });
@@ -227,6 +232,7 @@ export class AnthropicProvider implements LlmProvider {
                 .filter((value): value is number => typeof value === "number");
               if (parts.length) prompt = parts.reduce((sum, value) => sum + value, 0);
               if (typeof usage.output_tokens === "number") completion = usage.output_tokens;
+              reportUsage();
               break;
             }
             case "content_block_delta":
@@ -240,6 +246,7 @@ export class AnthropicProvider implements LlmProvider {
             case "message_delta":
               // output_tokens is cumulative: the last one counts.
               if (typeof event.usage?.output_tokens === "number") completion = event.usage.output_tokens;
+              reportUsage();
               break;
             case "message_stop":
               yield done();

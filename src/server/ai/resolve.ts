@@ -12,6 +12,7 @@ import { ANTHROPIC_CONTEXT_LENGTH, MAX_OUTPUT_TOKENS } from "../llm/anthropic.js
 import type { LlmProvider, ModelInfo } from "../llm/provider.js";
 import type { FailureContext, ProviderFactory } from "../llm/routes.js";
 import { LLM_DEFAULTS } from "../settings.js";
+import { UsageTally, type UsageMeter } from "./usage.js";
 
 /** D35: the context length of a hosted model whose list doesn't report one (OpenAI and the rest). */
 export const HOSTED_CONTEXT_LENGTH = 128_000;
@@ -32,6 +33,8 @@ export interface TaskLlm {
   contextLength: number | null;
   /** D35: the output limit the adapter sends where the provider needs one. */
   maxTokens: number;
+  /** US-25: a paid run's token count (its requests go through it); null for local runs. */
+  usage: UsageTally | null;
 }
 
 /**
@@ -39,7 +42,13 @@ export interface TaskLlm {
  * only to that provider; a removed provider is 409 LLM_PROVIDER_MISSING; a local task without a
  * local LLM is 409 LLM_NOT_CONFIGURED. Both are thrown before any stream opens.
  */
-export function resolveTaskLlm(settings: Settings, task: AiTask, factory: ProviderFactory): TaskLlm {
+export function resolveTaskLlm(
+  settings: Settings,
+  task: AiTask,
+  factory: ProviderFactory,
+  /** US-25: where a paid run's tokens are counted for the session. */
+  meter?: UsageMeter,
+): TaskLlm {
   const llm = settings.llm;
   const label = AI_TASK_LABELS[task];
   const maxTokens = MAX_OUTPUT_TOKENS[task];
@@ -63,15 +72,19 @@ export function resolveTaskLlm(settings: Settings, task: AiTask, factory: Provid
       apiKey: provider.apiKey,
       timeoutMs,
     });
+    const providerInfo: AiProvider = { id: provider.id, label: provider.label, kind: provider.kind };
+    const bound = bindTask(adapter, task, { model: paid.model, contextLength });
+    const usage = meter ? new UsageTally(providerInfo, meter) : null;
     return {
       // The local key never travels with a paid task; the provider's own key is in the adapter.
       llm: { ...base, baseUrl: provider.baseUrl, apiKey: null, model: paid.model },
-      provider: bindTask(adapter, task, { model: paid.model, contextLength }),
+      provider: usage ? usage.wrap(bound) : bound,
       task: label,
-      providerInfo: { id: provider.id, label: provider.label, kind: provider.kind },
+      providerInfo,
       failure: { label: provider.label, apiKey: provider.apiKey },
       contextLength,
       maxTokens,
+      usage,
     };
   }
   if (!llm?.baseUrl || !llm.model)
@@ -84,6 +97,7 @@ export function resolveTaskLlm(settings: Settings, task: AiTask, factory: Provid
     providerInfo: { ...LOCAL_AI_PROVIDER },
     contextLength: null,
     maxTokens,
+    usage: null,
   };
 }
 

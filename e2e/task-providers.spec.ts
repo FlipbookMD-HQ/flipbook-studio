@@ -109,6 +109,10 @@ test("Generate on Anthropic says so before and during the run; a removed provide
   );
   await expect(page).toHaveURL(new RegExp(`/decks/${id("marvel-guide")}/slides/`));
   await expect(page.getByRole("link", { name: /Reading guide/ }).first()).toBeVisible();
+  // US-25: the progress panel closed, so the opened deck says what the paid run used.
+  const generated = page.getByTestId("generated-usage");
+  await expect(generated).toContainText("Generated with Anthropic");
+  await expect(generated.getByTestId("ai-usage")).toHaveText(/ in · .* out tokens|usage not reported/);
   const messages = anthropic.requests.filter((request) => request.path === "/v1/messages");
   expect(messages).toHaveLength(1);
   expect(messages[0]!.body).toMatchObject({ model: "claude-sonnet-4-5", max_tokens: 8192 });

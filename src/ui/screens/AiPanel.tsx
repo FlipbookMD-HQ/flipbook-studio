@@ -7,7 +7,7 @@ import type {
   RewriteInstruction,
 } from "../../shared/api";
 import { ApiRequestError, rewriteSlide } from "../api";
-import { AiAction, SendsTo } from "../ai";
+import { AiAction, NO_RUN_USAGE, SendsTo, UsageNote, endUsage, trackUsage, type RunUsage } from "../ai";
 import { ProposalReview } from "./ProposalReview";
 import { ErrorNotice } from "./Shell";
 
@@ -45,6 +45,8 @@ export function AiPanel({
   const [showRaw, setShowRaw] = useState(false);
   // US-24: where the running rewrite sends the slide, from its `start` event.
   const [sendsTo, setSendsTo] = useState<AiProvider | null>(null);
+  // US-25: the tokens of the last paid run, shown once it ends (also after Cancel).
+  const [usage, setUsage] = useState<RunUsage>(NO_RUN_USAGE);
   const last = useRef<RewriteInstruction | null>(null);
   const controller = useRef<AbortController | null>(null);
 
@@ -59,14 +61,17 @@ export function AiPanel({
     setOpen(false);
     setShowRaw(false);
     setSendsTo(null);
+    setUsage(NO_RUN_USAGE);
     let text = "";
     let notice: string | null = null;
     setRun({ state: "running", text, notice });
     try {
       await rewriteSlide(
         { deckId, slideId, baseHash, instruction, ...(avoid?.length ? { avoid } : {}) },
-        ({ event, data }) => {
+        (aiEvent) => {
           if (abort.signal.aborted) return;
+          setUsage((current) => trackUsage(current, aiEvent));
+          const { event, data } = aiEvent;
           if (event === "start") setSendsTo(data.provider);
           else if (event === "token") {
             text += data.text;
@@ -92,6 +97,7 @@ export function AiPanel({
 
   const cancel = () => {
     controller.current?.abort();
+    setUsage(endUsage);
     setRun({ state: "idle" });
   };
   const raw = run.state === "failed" ? ((run.error.details?.raw as string | undefined) ?? run.raw) : "";
@@ -108,6 +114,7 @@ export function AiPanel({
         AI
       </AiAction>
       {dirty && !running ? <small className="muted">Save your edits to use AI.</small> : null}
+      {running ? null : <UsageNote run={usage} />}
       {open ? (
         <div className="popover ai-menu" role="menu" aria-label="AI rewrite">
           <button type="button" role="menuitem" onClick={() => void start({ kind: "shorten" })}>

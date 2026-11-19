@@ -16,6 +16,11 @@ export interface ChatRequest {
   /** The AI task asking, which sets the output limit where a provider needs one (D35). */
   task?: AiTask;
   signal: AbortSignal;
+  /**
+   * US-25: called with this request's usage so far, each time the provider reports more (Anthropic
+   * sends input tokens in `message_start`, before any text). The last call is the request's total.
+   */
+  onUsage?: (usage: { prompt: number; completion: number }) => void;
 }
 /**
  * A listed model. The capability fields are what the server reported, for the chat filter (D40);
@@ -349,8 +354,10 @@ export class OpenAiCompatibleProvider implements LlmProvider {
           }
           const text = event.choices?.[0]?.delta?.content;
           if (typeof text === "string" && text) yield { type: "delta", text };
-          if (event.usage && typeof event.usage.prompt_tokens === "number")
+          if (event.usage && typeof event.usage.prompt_tokens === "number") {
             usage = { prompt: event.usage.prompt_tokens, completion: event.usage.completion_tokens ?? 0 };
+            request.onUsage?.(usage);
+          }
         }
       }
       // The stream ended without [DONE]: still finished.
