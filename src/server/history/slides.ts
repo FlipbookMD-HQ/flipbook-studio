@@ -7,6 +7,8 @@ import {
   assetBaseName,
   assetReferences,
   checkAsset,
+  chunkLayout,
+  joinLayout,
   loadPresentation,
   renderSlideDocument,
   type Presentation,
@@ -29,58 +31,8 @@ const ASSET_REF = /^assets\/[^/]+$/;
 const MAX_NAME_SUFFIX = 999;
 
 // ---------- single-file chunks ----------
-// The same split core's slide writer uses (core doesn't export it): chunks are separated by
-// `---` lines outside notes comments, after the frontmatter. A restore swaps one chunk's text
-// and leaves the separators, blank lines and every other chunk's bytes as they are.
-
-const FRONTMATTER = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
-const NOTES_COMMENT = /<!--\s*notes:[\s\S]*?-->/gi;
-
-function chunkSpans(text: string): [number, number][] {
-  const frontmatter = FRONTMATTER.exec(text);
-  const start = frontmatter ? frontmatter[0].length : 0;
-  const notes = [...text.matchAll(NOTES_COMMENT)].map((match) => [
-    match.index,
-    match.index + match[0].length,
-  ]);
-  const inNotes = (offset: number) => notes.some(([from, to]) => offset > from! && offset < to!);
-  const spans: [number, number][] = [];
-  let chunkStart = start;
-  let position = start;
-  while (position < text.length) {
-    const newline = text.indexOf("\n", position);
-    const lineEnd = newline === -1 ? text.length : newline;
-    const next = newline === -1 ? text.length : newline + 1;
-    if (text.slice(position, lineEnd).trim() === "---" && !inNotes(position)) {
-      spans.push([chunkStart, position]);
-      chunkStart = next;
-    }
-    position = next;
-  }
-  spans.push([chunkStart, text.length]);
-  return spans.filter(([from, to]) => text.slice(from, to).trim());
-}
-
-/** `glue[0] cores[0] glue[1] … cores[n-1] glue[n]`; cores are chunks without surrounding whitespace. */
-export function chunkLayout(text: string): { cores: string[]; glue: string[] } {
-  const bom = text.startsWith("﻿") ? 1 : 0;
-  const ranges = chunkSpans(text.slice(bom)).map(([from, to]) => {
-    const raw = text.slice(from + bom, to + bom);
-    const start = from + bom + (raw.length - raw.trimStart().length);
-    return [start, start + raw.trim().length] as const;
-  });
-  const glue: string[] = [];
-  let cursor = 0;
-  for (const [from, to] of ranges) {
-    glue.push(text.slice(cursor, from));
-    cursor = to;
-  }
-  glue.push(text.slice(cursor));
-  return { cores: ranges.map(([from, to]) => text.slice(from, to)), glue };
-}
-
-const joinLayout = ({ cores, glue }: { cores: string[]; glue: string[] }) =>
-  cores.map((core, index) => glue[index] + core).join("") + glue[cores.length];
+// core's chunkLayout splits the way its slide writer does; a restore swaps one chunk's text and
+// leaves the separators, blank lines and every other chunk's bytes as they are.
 
 /** Puts `core` at `index` (replacing that chunk), or after the last chunk when `index` is past the end. */
 export function placeChunk(text: string, index: number, core: string): { text: string; index: number } {

@@ -1,6 +1,6 @@
 {
   "name": "@flipbook-md/studio",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Self-hosted editor for Flipbook MD decks, themes, templates, blueprints and media kits.",
   "license": "MIT",
@@ -32,8 +32,8 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@flipbook-md/core": "~0.14.0",
-    "@hono/node-server": "^1.19.19",
+    "@flipbook-md/core": "~0.14.1",
+    "@hono/node-server": "^2.1.9",
     "hono": "^4.13.18",
     "mammoth": "^1.13.0",
     "turndown": "^7.2.5",
@@ -63,7 +63,7 @@
     "prettier": "^3.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.6",
+    "react-router-dom": "^7.18.6",
     "tsup": "^9.0.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.2",

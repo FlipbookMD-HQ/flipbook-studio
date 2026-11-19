@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { SettingsStore } from "../src/server/settings.js";
 import { encodeDeckId } from "../src/server/paths.js";
-import { chunkLayout, insertManifestEntry, placeChunk, rewriteImage } from "../src/server/history/slides.js";
+import { chunkLayout } from "@flipbook-md/core";
+import { insertManifestEntry, placeChunk, rewriteImage } from "../src/server/history/slides.js";
 import { FOLDER_DECK, headers, makeApp, tempDir, write } from "./helpers.js";
 import { git, gitAs, initRepo, runner } from "./support/git.js";
 
