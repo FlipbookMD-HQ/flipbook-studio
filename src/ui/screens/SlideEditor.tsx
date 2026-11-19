@@ -244,6 +244,12 @@ export function SlideEditor() {
               });
             }
           }}
+          onSlideRestored={(result) => {
+            // US-27: show the restored slide in the editor (reloaded from disk).
+            loadedFor.current = null;
+            if (result.slideId !== slideId)
+              navigate(`/decks/${id}/slides/${encodeURIComponent(result.slideId)}`, { replace: true });
+          }}
           onRestored={(result) => {
             // US-26: reload the open slide; if the restore removed it, move to slide 1.
             loadedFor.current = null;

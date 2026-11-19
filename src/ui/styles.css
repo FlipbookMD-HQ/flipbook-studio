@@ -2541,3 +2541,73 @@ button.danger:not(.primary) {
   max-height: 160px;
   overflow-y: auto;
 }
+/* US-27: a version's slides and Restore this slide */
+.version-view {
+  display: grid;
+  gap: 0.5rem;
+}
+.version-view-head {
+  display: grid;
+  gap: 0.1rem;
+}
+.version-view-head .link {
+  justify-self: start;
+}
+.version-slides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.version-slides li {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.4rem;
+  background: var(--panel-high);
+  border-radius: 6px;
+}
+.version-slides li[data-status="changed"] {
+  border-left: 2px solid var(--accent);
+}
+.version-slides li[data-status="gone"] {
+  border-left: 2px solid var(--danger-bg);
+}
+/* 1080x1350 slides scaled by 0.1 = 108x135. */
+.version-thumb {
+  width: 108px;
+  aspect-ratio: 1080 / 1350;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg-deep);
+}
+.version-thumb iframe {
+  width: 1080px;
+  height: 1350px;
+  border: 0;
+  transform: scale(0.1);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.version-slide-info {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+  min-width: 0;
+}
+.version-slide-title {
+  overflow-wrap: anywhere;
+}
+.version-slide-info button {
+  font-size: 0.8rem;
+}
+.version-preview-error {
+  width: 108px;
+  font-size: 0.75rem;
+}
+.version-view .notice ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
+}

@@ -98,6 +98,9 @@ import { DeckHistoryService, gitFailure } from "./history/versions.js";
 import { DeckRestorer } from "./history/restore.js";
 import { RestoreParamsSchema, RestoreRequestSchema } from "../shared/api.js";
 import type { DeckEntry } from "./workspace.js";
+// US-27: a past version's slides, their previews and files, and restoring one slide.
+import { VersionCopies } from "./history/copies.js";
+import { VersionSlides } from "./history/slides.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Room for multipart boundaries and headers around an 8 MB image. */
@@ -110,6 +113,9 @@ export const UI_CSP =
   "font-src 'self' data: https: http:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 export const FILE_CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox";
+
+/** US-27: a version preview opened on its own gets the UI's CSP plus the preview iframe's sandbox. */
+export const VERSION_PREVIEW_CSP = `${UI_CSP}; sandbox`;
 
 const STATIC_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
@@ -263,6 +269,34 @@ export function createApp(options: AppOptions) {
     throw new StudioError(403, "FORBIDDEN_ORIGIN", "Preview files are read-only.");
   });
 
+  // US-27: a past version's files, for version previews (D39). Like deck files: Host-checked,
+  // GET only, no token; path-guarded inside the version copy.
+  const versionCopies = new VersionCopies(options.workspace, git);
+  app.get("/api/decks/:id/versions/:sha/files/*", async (c) => {
+    const { sha } = RestoreParamsSchema.parse({ sha: c.req.param("sha") });
+    const prefix = `/api/decks/${c.req.param("id")}/versions/${c.req.param("sha")}/files/`;
+    const raw = new URL(c.req.url).pathname.slice(prefix.length);
+    let relative: string;
+    try {
+      relative = decodeURIComponent(raw);
+    } catch {
+      throw new StudioError(403, "PATH_OUTSIDE_ROOT", "File is outside the version.", { path: raw });
+    }
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    const file = await withGit(() => versionCopies.file(deck, sha, relative));
+    return new Response(await fs.readFile(file), {
+      headers: {
+        "Content-Type": assetMime(file) ?? "application/octet-stream",
+        "Content-Security-Policy": FILE_CSP,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+  app.on(["POST", "PUT", "PATCH", "DELETE"], "/api/decks/:id/versions/:sha/files/*", () => {
+    throw new StudioError(403, "FORBIDDEN_ORIGIN", "Version files are read-only.");
+  });
+
   const api = new Hono<Env>();
   api.use("*", async (c, next) => {
     checkApiRequest(c.req.raw.headers, options.port(), options.token);
@@ -373,6 +407,36 @@ export function createApp(options: AppOptions) {
   api.post("/decks/:id/discard", async (c) => {
     const { expectHead } = RestoreRequestSchema.parse(await jsonBody(c));
     return c.json(await restored(c.req.param("id"), (deck) => restorer.discard(deck, expectHead)));
+  });
+  // US-27: a version's slides with their status, a slide's preview, and restoring one slide
+  // (one journal step, no commit, no DECK_DIRTY check).
+  const versionSlides = new VersionSlides({ versions, journal, copies: versionCopies });
+  api.get("/decks/:id/versions/:sha", async (c) => {
+    const { sha } = RestoreParamsSchema.parse({ sha: c.req.param("sha") });
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    return c.json(await withGit(() => versionSlides.view(deck, sha)));
+  });
+  api.get("/decks/:id/versions/:sha/slides/:slideId{.+}/preview", async (c) => {
+    const { sha } = RestoreParamsSchema.parse({ sha: c.req.param("sha") });
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    const html = await withGit(() =>
+      versionSlides.preview(deck, c.req.param("id"), sha, c.req.param("slideId")),
+    );
+    return c.body(html, 200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": VERSION_PREVIEW_CSP,
+      "Cache-Control": "no-store",
+    });
+  });
+  api.post("/decks/:id/versions/:sha/slides/:slideId{.+}/restore", async (c) => {
+    const { sha } = RestoreParamsSchema.parse({ sha: c.req.param("sha") });
+    const deck = await findDeck(options.workspace, c.req.param("id"));
+    const result = await withGit(() => versionSlides.restore(deck, sha, c.req.param("slideId")));
+    return c.json({
+      deck: await deckDetail(options.workspace, c.req.param("id")),
+      history: journal.history(deck),
+      ...result,
+    });
   });
   // US-16: deck images.
   // US-18: start a deck from an uploaded file.

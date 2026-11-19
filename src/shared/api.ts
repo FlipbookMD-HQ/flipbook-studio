@@ -929,3 +929,34 @@ export const RestoreResponseSchema = z.object({
   skipped: z.array(z.object({ path: z.string(), reason: z.string() })),
 });
 export type RestoreResponse = z.infer<typeof RestoreResponseSchema>;
+
+// US-27: a past version's slides, and restoring one slide from it (tech-spec D39). A slide
+// restore is one undoable journal step and makes no commit.
+export const VersionSlideSchema = z.object({
+  /** The slide's ID in that version: the manifest path (folder decks) or `#<index>` (single-file decks). */
+  slideId: z.string(),
+  index: z.number().int().nonnegative(),
+  title: z.string(),
+  template: z.string(),
+  /** Against the deck now. `gone`: the slide isn't in the deck any more. */
+  status: z.enum(["same", "changed", "gone"]),
+});
+export type VersionSlide = z.infer<typeof VersionSlideSchema>;
+export const VersionViewResponseSchema = z.object({
+  version: VersionSchema,
+  slides: z.array(VersionSlideSchema),
+});
+export type VersionViewResponse = z.infer<typeof VersionViewResponseSchema>;
+export const RestoredAssetSchema = z.object({ from: z.string(), to: z.string() });
+export type RestoredAsset = z.infer<typeof RestoredAssetSchema>;
+export const SlideRestoreResponseSchema = z.object({
+  deck: DeckDetailSchema,
+  history: HistorySchema,
+  /** The restored slide's ID in the deck now (single-file IDs are positions). */
+  slideId: z.string(),
+  /** Images written to `assets/`; `to` differs from `from` when the name was taken. */
+  restoredAssets: z.array(RestoredAssetSchema),
+  /** Images not written: symlinks, submodules, over 8 MB, or not real images. */
+  skippedAssets: z.array(z.object({ path: z.string(), reason: z.string() })),
+});
+export type SlideRestoreResponse = z.infer<typeof SlideRestoreResponseSchema>;

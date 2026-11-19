@@ -29,5 +29,6 @@ export function undoShortcut(event: {
 export function isDeckWrite(method: string, url: string): boolean {
   if (method === "GET" || method === "HEAD") return false;
   if (/^\/api\/decks\/[^/]+\/(versions\/[^/]+\/restore|discard)$/.test(url)) return true; // US-26
+  if (/^\/api\/decks\/[^/]+\/versions\/[^/]+\/slides\/.+\/restore$/.test(url)) return true; // US-27
   return /^\/api\/(decks\/[^/]+\/(slides|order|assets)|proposals\/[^/]+\/apply)/.test(url);
 }
