@@ -18,7 +18,9 @@ import { assetsKey, uploadFiles } from "./ImagesPanel";
 import { altFromPath, hasImage, imageInsertion, imageLine, replaceFirstImage } from "../images";
 import type { EditorView } from "codemirror";
 
-const PREVIEW_DELAY_MS = 250;
+// Wait after the last keystroke before asking for a preview. With the server p95 of 150 ms this
+// keeps the update within the 300 ms target (tech-spec system design).
+const PREVIEW_DELAY_MS = 150;
 
 function same(a: SlideDraft, b: SlideDraft): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
