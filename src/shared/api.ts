@@ -26,12 +26,16 @@ export const ERROR_CODES = [
   "JOB_NOT_FOUND",
   "EXPORT_FAILED",
   "SETTINGS_UNSUPPORTED",
+  "PROVIDER_EXISTS",
+  "PROVIDER_NOT_FOUND",
   "LLM_NOT_CONFIGURED",
   "LLM_UNREACHABLE",
   "LLM_UNAUTHORIZED",
   "LLM_MODEL_NOT_FOUND",
   "LLM_TIMEOUT",
   "LLM_BAD_OUTPUT",
+  "LLM_RATE_LIMITED",
+  "LLM_NO_CREDIT",
   "CANCELLED",
   "PROPOSAL_NOT_FOUND",
   "STALE_PROPOSAL",
@@ -439,12 +443,83 @@ export const LlmSettingsSchema = z.object({
   taskModels: TaskModelsSchema.optional(),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
+// US-21 (D32, D34): paid providers, kept beside the local connection.
+export const PROVIDER_KINDS = ["anthropic", "openai", "openai-compatible"] as const;
+export const ProviderKindSchema = z.enum(PROVIDER_KINDS);
+export type ProviderKind = z.infer<typeof ProviderKindSchema>;
+/** How each kind is named in Settings → Providers. */
+export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
+  anthropic: "Anthropic (Claude)",
+  openai: "OpenAI",
+  "openai-compatible": "Other (OpenAI-compatible)",
+};
+/** localhost, 127.0.0.0/8 or ::1 (a URL hostname, with or without IPv6 brackets). */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+/** A provider URL: https, or http only on loopback, so a key never crosses the network in clear. */
+const providerUrl = httpUrl.refine((value) => {
+  const url = new URL(value);
+  return url.protocol === "https:" || isLoopbackHost(url.hostname);
+}, "Use an https:// URL (http:// only for a server on this machine).");
+export const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,40}$/;
+const PROVIDER_ID = z.string().regex(PROVIDER_ID_PATTERN, "Not a provider ID.");
+const PROVIDER_LABEL = z.string().trim().min(1, "Enter a name.").max(40, "Use at most 40 characters.");
+/** Spaces around a pasted key are trimmed. */
+const PROVIDER_API_KEY = z.string().trim().min(1, "Enter the API key.").max(500, "That key is too long.");
+export const ProviderSchema = z.object({
+  /** Made by the server from the label, and never changed (task models point to it). */
+  id: PROVIDER_ID,
+  kind: ProviderKindSchema,
+  label: PROVIDER_LABEL,
+  /** Fixed for anthropic and openai; chosen by the user for openai-compatible. */
+  baseUrl: providerUrl,
+  /** Never returned by the API (see ProviderView). */
+  apiKey: PROVIDER_API_KEY,
+});
+export type Provider = z.infer<typeof ProviderSchema>;
+/** A provider as the API returns it: the key only as a hint such as "sk-…a1b2" (D34). */
+export const ProviderViewSchema = ProviderSchema.omit({ apiKey: true }).extend({ apiKeyHint: z.string() });
+export type ProviderView = z.infer<typeof ProviderViewSchema>;
+/** POST /api/providers. `baseUrl` is required for openai-compatible and refused for the others. */
+export const CreateProviderRequestSchema = z
+  .object({
+    kind: ProviderKindSchema,
+    label: PROVIDER_LABEL.optional(),
+    baseUrl: providerUrl.optional(),
+    apiKey: PROVIDER_API_KEY,
+  })
+  .strict();
+export type CreateProviderRequest = z.infer<typeof CreateProviderRequestSchema>;
+/** PATCH /api/providers/:id. `baseUrl` only for openai-compatible. */
+export const UpdateProviderRequestSchema = z
+  .object({
+    label: PROVIDER_LABEL.optional(),
+    apiKey: PROVIDER_API_KEY.optional(),
+    baseUrl: providerUrl.optional(),
+  })
+  .strict();
+export type UpdateProviderRequest = z.infer<typeof UpdateProviderRequestSchema>;
+/** Tokens as a provider reports them. */
+export const UsageSchema = z.object({
+  input: z.number().int().nonnegative(),
+  output: z.number().int().nonnegative(),
+});
+export type Usage = z.infer<typeof UsageSchema>;
 export const SettingsSchema = z.object({
   version: z.literal(1),
   llm: LlmSettingsSchema.nullable(),
   lastWorkspace: z.string().nullable(),
+  /** US-21: paid providers; missing means none. */
+  providers: z.array(ProviderSchema).optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
+/** GET /api/settings: Settings with each provider as a ProviderView (keys never leave the server). */
+export const SettingsViewSchema = SettingsSchema.extend({
+  providers: z.array(ProviderViewSchema).optional(),
+});
+export type SettingsView = z.infer<typeof SettingsViewSchema>;
 /** PUT /api/settings: a partial merge. `llm: null` removes the LLM; `apiKey: null` clears the key, leaving it out keeps it. */
 export const SettingsPatchSchema = z
   .object({
@@ -459,21 +534,54 @@ export const SettingsPatchSchema = z
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
 
-export const LlmModelsRequestSchema = z.object({
+// US-21: /api/llm/models and /api/llm/test take a target in one of three forms.
+/** A saved provider, used with its stored key. */
+const SavedProviderTarget = z.object({ providerId: PROVIDER_ID });
+/** A provider not saved yet. `baseUrl` only (and always) for openai-compatible. */
+const NewProviderTarget = z.object({
+  providerId: z.never().optional(),
+  kind: ProviderKindSchema,
+  baseUrl: providerUrl.optional(),
+  apiKey: PROVIDER_API_KEY,
+});
+const LocalTarget = z.object({
+  providerId: z.never().optional(),
+  kind: z.never().optional(),
   baseUrl: httpUrl,
   /** Left out: the saved key is used. null: no key. */
   apiKey: z.string().nullable().optional(),
 });
+const newProviderBaseUrlRule = (value: { kind: ProviderKind; baseUrl?: string }, ctx: z.RefinementCtx) => {
+  if (value.kind === "openai-compatible" && !value.baseUrl)
+    ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "Enter the service's base URL." });
+  if (value.kind !== "openai-compatible" && value.baseUrl)
+    ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "This provider's URL is fixed." });
+};
+export const LlmModelsRequestSchema = z.union([
+  SavedProviderTarget,
+  NewProviderTarget.superRefine(newProviderBaseUrlRule),
+  LocalTarget,
+]);
 export type LlmModelsRequest = z.infer<typeof LlmModelsRequestSchema>;
 export const LlmModelsResponseSchema = z.object({
   models: z.array(z.object({ id: z.string(), contextLength: z.number().optional() })),
 });
-export const LlmTestRequestSchema = LlmModelsRequestSchema.extend({
+const LLM_TEST_FIELDS = {
   model: z.string().min(1),
   timeoutMs: z.number().int().min(5_000).max(600_000).optional(),
-});
+};
+export const LlmTestRequestSchema = z.union([
+  SavedProviderTarget.extend(LLM_TEST_FIELDS),
+  NewProviderTarget.extend(LLM_TEST_FIELDS).superRefine(newProviderBaseUrlRule),
+  LocalTarget.extend(LLM_TEST_FIELDS),
+]);
 export type LlmTestRequest = z.infer<typeof LlmTestRequestSchema>;
-export const LlmTestResponseSchema = z.object({ reply: z.string(), latencyMs: z.number() });
+export const LlmTestResponseSchema = z.object({
+  reply: z.string(),
+  latencyMs: z.number(),
+  /** US-21: tokens the provider reported for the test, or null. */
+  usage: UsageSchema.nullable(),
+});
 export type LlmTestResponse = z.infer<typeof LlmTestResponseSchema>;
 
 // US-12 to US-15: AI proposals.

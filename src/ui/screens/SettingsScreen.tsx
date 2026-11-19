@@ -7,8 +7,12 @@ import {
   type AiTask,
   type ApiError,
   type LlmTestResponse,
+  type ProviderView,
+  type SettingsView,
 } from "../../shared/api";
 import { ApiRequestError, getSettings, listLlmModels, putSettings, testLlm } from "../api";
+import { modelMark } from "../modelMarks";
+import { ProvidersSection } from "./ProvidersSection";
 import { ErrorNotice, Shell } from "./Shell";
 
 const PRESETS = [
@@ -83,9 +87,10 @@ export function SettingsScreen() {
       // US-19: list the models now, so a task model the server lost is marked at once.
       void refreshModels(url, true);
     }
-    // Runs when saved settings arrive; refreshModels only reads values set just above.
+    // Runs when saved LLM settings arrive (a provider change keeps the same llm object, so unsaved
+    // edits here survive it); refreshModels only reads values set just above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.data]);
+  }, [settings.data?.llm]);
 
   // The key to send for an unsaved connection: left out keeps the saved one.
   const keyForRequest = () => (keyTouched ? apiKey || null : undefined);
@@ -150,6 +155,12 @@ export function SettingsScreen() {
     }
   };
 
+  // US-21: provider changes update the cached settings without touching the local LLM fields.
+  const setProviders = (providers: ProviderView[]) =>
+    queryClient.setQueryData<SettingsView>(["settings"], (old) =>
+      old ? { ...old, providers: providers.length ? providers : undefined } : old,
+    );
+
   const disconnect = async () => {
     try {
       queryClient.setQueryData(["settings"], await putSettings({ llm: null }));
@@ -176,6 +187,8 @@ export function SettingsScreen() {
       : null;
   const offered =
     models && model && !models.includes(model) ? [model, ...models] : (models ?? (model ? [model] : []));
+  // US-21 (D40): lists hold chat models only, so a saved model can be "not a chat model".
+  const defaultMark = modelMark(model, models);
 
   return (
     <Shell
@@ -202,6 +215,7 @@ export function SettingsScreen() {
           <a href="#routing">Task routing</a>
           <a href="#bounds">Sampling &amp; repair</a>
           <a href="#diagnostics">Diagnostics</a>
+          <a href="#providers">Providers</a>
           <div className="engine-card mono small">
             <span>
               <i className={settings.data.llm ? "dot" : "dot danger"} aria-hidden="true" />{" "}
@@ -282,7 +296,7 @@ export function SettingsScreen() {
                   {offered.length ? null : <option value="">No model</option>}
                   {offered.map((id) => (
                     <option key={id} value={id}>
-                      {id}
+                      {id === model && defaultMark === "not a chat model" ? `${id} (not a chat model)` : id}
                     </option>
                   ))}
                 </select>
@@ -291,6 +305,11 @@ export function SettingsScreen() {
                 {loadingModels ? "Loading…" : "Refresh models"}
               </button>
             </div>
+            {defaultMark === "not a chat model" ? (
+              <p className="field-error" data-testid="model-not-chat">
+                {model} is not a chat model. Pick another model.
+              </p>
+            ) : null}
             {models && models.length === 0 ? (
               <p className="warning" data-testid="no-models">
                 No models — <code>ollama pull &lt;model&gt;</code>
@@ -331,7 +350,8 @@ export function SettingsScreen() {
               </p>
               {AI_TASKS.map((task) => {
                 const chosen = taskModels[task];
-                const missing = Boolean(chosen && models && !models.includes(chosen));
+                const mark = modelMark(chosen, models);
+                const missing = Boolean(mark);
                 const choices = [...new Set([...(chosen ? [chosen] : []), ...(models ?? [])])];
                 return (
                   <label key={task} className="field compact">
@@ -345,13 +365,15 @@ export function SettingsScreen() {
                       <option value="">Same as default{model ? ` (${model})` : ""}</option>
                       {choices.map((id) => (
                         <option key={id} value={id}>
-                          {id === chosen && missing ? `${id} (not on this server)` : id}
+                          {id === chosen && mark ? `${id} (${mark})` : id}
                         </option>
                       ))}
                     </select>
                     {missing ? (
                       <small className="field-error" data-testid={`task-model-missing-${task}`}>
-                        {chosen} isn't on this server. Pick another model, or install it.
+                        {mark === "not a chat model"
+                          ? `${chosen} is not a chat model. Pick another model.`
+                          : `${chosen} isn't on this server. Pick another model, or install it.`}
                       </small>
                     ) : null}
                   </label>
@@ -417,6 +439,7 @@ export function SettingsScreen() {
               ) : null}
             </div>
           </div>
+          <ProvidersSection providers={settings.data.providers ?? []} onChange={setProviders} />
         </section>
       </div>
     </Shell>

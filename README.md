@@ -62,6 +62,26 @@ ollama pull llama3.1
 
 Then in Studio open **Settings**, pick **Ollama**, choose the model and click **Test**. Until a model is set up, AI buttons are turned off and link to Settings.
 
+Model lists show only models that can chat, so embedding, speech and image models (such as `nomic-embed-text`) don't appear. A model you saved earlier that can't chat is marked **not a chat model** in Settings.
+
+### Paid providers (Claude, OpenAI and others)
+
+You can also connect a hosted service with your own API key, to use a stronger model than the one you run locally:
+
+1. Open **Settings → Providers** and click **Add a provider**.
+2. Choose **Anthropic (Claude)**, **OpenAI**, or **Other (OpenAI-compatible)**. For **Other**, also enter the service's base URL, such as `https://openrouter.ai/api/v1`. It must use `https://` (plain `http://` is accepted only for a server on this machine).
+3. Paste your API key and click **Add**. Studio lists the provider's chat models. Pick one and click **Test** to see a short reply, how long it took, and the tokens it used, or the exact error (wrong key, no credit, rate limit, network).
+
+You can add one Anthropic provider, one OpenAI provider, and any number of other services. **Replace key** changes a key, and **Remove** deletes the provider and its key.
+
+**Where keys are stored.** Keys are kept only on this machine, in Studio's settings file, `settings.json` in the settings folder (see [Where things are stored](#where-things-are-stored); on macOS that's `~/Library/Application Support/flipbook-studio/settings.json`). The file has mode `0600` and its folder `0700`, so only your user can read them. Keys are never written into a deck or a workspace folder. After you save a key, Studio shows it only as a hint such as `sk-…a1b2`, never in full, and it replaces keys with their hints in error messages and logs.
+
+**What is sent where.**
+
+- Each key goes only to its own provider's base URL. Studio never follows a redirect from a provider, so a key can't be passed on to another host.
+- Listing models and **Test** send only the key and a fixed one-line test prompt. They never send deck content.
+- Adding a provider changes no AI task. Rewriting, generating, drafting and chat still use your local model, so **nothing from your decks is sent to a paid provider until you assign a task to it**. Choosing a provider for a task comes in a later release.
+
 ## Guides
 
 <details>
@@ -134,14 +154,14 @@ Studio only listens on `127.0.0.1`, so other computers can't reach it.
 
 ### Where things are stored
 
-| What                                       | Where                                                                                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Your decks                                 | The folder you open                                                                                                              |
-| Themes, templates, blueprints and kits     | `~/Documents/flipbook` (or `--library`, or `FLIPBOOK_HOME`)                                                                      |
-| Settings, including the AI model           | `~/Library/Application Support/flipbook-studio` on macOS, `~/.config/flipbook-studio` on Linux (or `FLIPBOOK_STUDIO_CONFIG_DIR`) |
-| Temporary files during imports and AI runs | `.flipbook-studio-tmp/` in the open folder, cleaned up automatically                                                             |
+| What                                                   | Where                                                                                                                            |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Your decks                                             | The folder you open                                                                                                              |
+| Themes, templates, blueprints and kits                 | `~/Documents/flipbook` (or `--library`, or `FLIPBOOK_HOME`)                                                                      |
+| Settings, including the AI model and provider API keys | `~/Library/Application Support/flipbook-studio` on macOS, `~/.config/flipbook-studio` on Linux (or `FLIPBOOK_STUDIO_CONFIG_DIR`) |
+| Temporary files during imports and AI runs             | `.flipbook-studio-tmp/` in the open folder, cleaned up automatically                                                             |
 
-The settings file is readable only by you, because it can hold an API key.
+The settings file is readable only by you, because it can hold API keys.
 
 ### Update or uninstall
 

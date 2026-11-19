@@ -28,9 +28,15 @@ export async function startLlmStub({ script: initial = {} }: { script?: LlmScrip
   const requests: StubRequest[] = [];
   const open = new Set<http.ServerResponse>();
 
-  const fail = (res: http.ServerResponse, status: number, message: string) => {
-    res.writeHead(status, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: { message } }));
+  const fail = (
+    res: http.ServerResponse,
+    status: number,
+    message: string,
+    headers: Record<string, string> = {},
+  ) => {
+    res.writeHead(status, { "content-type": "application/json", ...headers });
+    // A body that is already JSON (a recorded provider error) is sent as recorded.
+    res.end(/^\s*\{/.test(message) ? message : JSON.stringify({ error: { message } }));
   };
 
   const server = http.createServer(async (req, res) => {
@@ -51,20 +57,34 @@ export async function startLlmStub({ script: initial = {} }: { script?: LlmScrip
 
     if (req.method === "GET" && path === "/v1/models") {
       const models = script.models ?? ["stub-model"];
-      if (!Array.isArray(models)) return fail(res, models.status, models.body ?? `status ${models.status}`);
+      if (!Array.isArray(models))
+        return fail(res, models.status, models.body ?? `status ${models.status}`, models.headers);
       res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify({ object: "list", data: models.map((id) => ({ id, object: "model" })) }));
+      const data = models.map((model) =>
+        typeof model === "string" ? { id: model, object: "model" } : model,
+      );
+      return res.end(JSON.stringify({ object: "list", data }));
     }
 
     if (req.method === "POST" && path === "/v1/chat/completions") {
       if (script.rejectResponseFormat && body && "response_format" in body)
         return fail(res, 400, "response_format is not supported by this server");
+      if (script.rejectStreamOptions && body && "stream_options" in body)
+        return fail(res, 400, "Unrecognized request argument supplied: stream_options");
       const fixture = nextChatFixture(script, chats++, {
         model: String(body?.model ?? ""),
         messages: (body?.messages as { role: string; content: string }[]) ?? [],
       });
       if (fixture.kind === "status")
-        return fail(res, fixture.status, fixture.body ?? `status ${fixture.status}`);
+        return fail(res, fixture.status, fixture.body ?? `status ${fixture.status}`, fixture.headers);
+      if (fixture.kind === "redirect") {
+        res.writeHead(302, { location: fixture.location });
+        return res.end();
+      }
+      if (fixture.kind === "html") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        return res.end("<!doctype html><title>Sign in to the Wi-Fi</title>");
+      }
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       res.flushHeaders();
       open.add(res);

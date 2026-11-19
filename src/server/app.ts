@@ -20,6 +20,8 @@ import {
   LlmModelsRequestSchema,
   LlmTestRequestSchema,
   SettingsPatchSchema,
+  CreateProviderRequestSchema,
+  UpdateProviderRequestSchema,
   RewriteRequestSchema,
   GenerateDeckRequestSchema,
   ImportDeckRequestSchema,
@@ -49,6 +51,8 @@ import { coreExports, exportsInfo, startExport, type ExportServices } from "./ex
 import { JobRegistry } from "./jobs.js";
 import { SettingsStore, configDir, maskSettings } from "./settings.js";
 import { defaultProviderFactory, listModels, testConnection, type ProviderFactory } from "./llm/routes.js";
+import { scrubKeys } from "./llm/keys.js";
+import { addProvider, removeProvider, updateProvider } from "./providers.js";
 import {
   copyGroup,
   copyKit,
@@ -124,14 +128,16 @@ export interface AppOptions {
 
 export type Env = { Variables: { requestId: string } };
 
-function sendError(c: Context<Env>, error: StudioError) {
-  return c.json({ error: error.toJSON() }, error.status);
+function sendError(c: Context<Env>, error: StudioError, scrub?: (text: string) => string) {
+  // US-21: a stored key never leaves in an error; the scrubber replaces it with its hint.
+  const body = { error: error.toJSON() };
+  return c.json(scrub ? (JSON.parse(scrub(JSON.stringify(body))) as typeof body) : body, error.status);
 }
 
 /** Maps typed errors to the envelope; anything else becomes 500 INTERNAL with the stack only in the log. */
-export function errorHandler(log: (line: string) => void) {
+export function errorHandler(log: (line: string) => void, scrub?: (text: string) => string) {
   return (error: Error, c: Context<Env>) => {
-    if (error instanceof StudioError) return sendError(c, error);
+    if (error instanceof StudioError) return sendError(c, error, scrub);
     if (error instanceof ZodError) {
       return sendError(
         c,
@@ -140,6 +146,7 @@ export function errorHandler(log: (line: string) => void) {
             fields: error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
           },
         }),
+        scrub,
       );
     }
     const requestId = c.get("requestId") ?? "-";
@@ -155,7 +162,11 @@ async function jsonBody(c: Context<Env>): Promise<unknown> {
 }
 
 export function createApp(options: AppOptions) {
-  const log = options.log ?? ((line: string) => console.log(line));
+  const rawLog = options.log ?? ((line: string) => console.log(line));
+  // US-21: every log line and error passes through the key scrubber (security § Data protection).
+  let storedKeys = (): string[] => [];
+  const scrub = (text: string) => scrubKeys(text, storedKeys());
+  const log = (line: string) => rawLog(scrub(line));
   const app = new Hono<Env>();
   const players = new PlayerRegistry();
   const jobs = new JobRegistry();
@@ -163,6 +174,10 @@ export function createApp(options: AppOptions) {
   const settingsStore = options.settings
     ? Promise.resolve(options.settings)
     : SettingsStore.open(configDir(), log);
+  settingsStore.then(
+    (store) => (storedKeys = () => store.apiKeys()),
+    () => {},
+  );
   const llmProvider = options.llmProvider ?? defaultProviderFactory;
   const proposals = new ProposalStore();
   const generations = new GenerationRuns();
@@ -407,6 +422,23 @@ export function createApp(options: AppOptions) {
     const patch = SettingsPatchSchema.parse(await jsonBody(c));
     return c.json(maskSettings(await (await settingsStore).update(patch)));
   });
+  // US-21: paid providers. Responses carry the key only as a hint; task models are never touched.
+  api.post("/providers", async (c) =>
+    c.json(await addProvider(await settingsStore, CreateProviderRequestSchema.parse(await jsonBody(c))), 201),
+  );
+  api.patch("/providers/:id", async (c) =>
+    c.json(
+      await updateProvider(
+        await settingsStore,
+        c.req.param("id"),
+        UpdateProviderRequestSchema.parse(await jsonBody(c)),
+      ),
+    ),
+  );
+  api.delete("/providers/:id", async (c) => {
+    await removeProvider(await settingsStore, c.req.param("id"));
+    return c.body(null, 204);
+  });
   api.post("/llm/models", async (c) =>
     c.json(
       await listModels(
@@ -435,7 +467,7 @@ export function createApp(options: AppOptions) {
     return sseTask(
       c.req.raw,
       (context) => runRewrite(context, prepared, request, { provider, llm, store: proposals, log }),
-      { log, baseUrl: llm.baseUrl, model: llm.model, task },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub },
     );
   });
   // US-13: generate a deck. Checks that can answer with plain JSON run before the stream opens.
@@ -453,7 +485,7 @@ export function createApp(options: AppOptions) {
           sources,
           log,
         }),
-      { log, baseUrl: llm.baseUrl, model: llm.model, task },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub },
     );
   });
   api.post("/ai/generate-deck/:runId/save-as", async (c) => {
@@ -468,7 +500,7 @@ export function createApp(options: AppOptions) {
     return sseTask(
       c.req.raw,
       (context) => runDraftKit(context, prepared, request, { provider, llm, store: proposals, log }),
-      { log, baseUrl: llm.baseUrl, model: llm.model, task },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub },
     );
   });
   // US-15: chat about a deck. One stream per deck; the session lives in memory only.
@@ -493,7 +525,7 @@ export function createApp(options: AppOptions) {
           chats.end(request.deckId);
         }
       },
-      { log, baseUrl: llm.baseUrl, model: llm.model, task },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub },
     );
   });
   api.post("/proposals/:id/apply", async (c) => {
@@ -633,7 +665,7 @@ export function createApp(options: AppOptions) {
     return c.html(shell.replace(TOKEN_PLACEHOLDER, options.token));
   });
 
-  app.onError(errorHandler(log));
+  app.onError(errorHandler(log, scrub));
 
   /** Stops player servers and cancels running exports (Studio is shutting down). */
   const shutdown = async () => {

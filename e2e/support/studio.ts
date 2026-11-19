@@ -8,6 +8,8 @@ export async function startStudio(
   port: number,
   /** The library folder (FLIPBOOK_HOME); defaults to fixtures/library. */
   library = path.resolve("fixtures/library"),
+  /** Extra environment, such as FLIPBOOK_STUDIO_ANTHROPIC_URL pointing at a fake server (US-21). */
+  env: NodeJS.ProcessEnv = {},
 ): Promise<{ url: string; banner: string; child: ChildProcess }> {
   const child = spawn(
     process.execPath,
@@ -17,6 +19,7 @@ export async function startStudio(
         ...process.env,
         FLIPBOOK_HOME: library,
         FLIPBOOK_STUDIO_CONFIG_DIR: configDir,
+        ...env,
       },
     },
   );
