@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import type { ApiError, GenerateDeckRequest, SlideDraft, Violation } from "../../shared/api";
+import type { AiProvider, ApiError, GenerateDeckRequest, SlideDraft, Violation } from "../../shared/api";
 import { ApiRequestError, generateDeck, getDeck, saveGeneratedDeck } from "../api";
-import { useLlmStatus } from "../ai";
+import { SendsTo, useLlmStatus } from "../ai";
 import { ErrorNotice } from "./Shell";
 
 type Status =
@@ -48,6 +48,8 @@ export function GenerateProgress({
   const [status, setStatus] = useState<Status>({ state: "running" });
   const [saveAsName, setSaveAsName] = useState(`${request.name}-2`.slice(0, 60));
   const [saveAsError, setSaveAsError] = useState<ApiError | null>(null);
+  // US-24: where the generation sends the topic or source, from its `start` event.
+  const [sendsTo, setSendsTo] = useState<AiProvider | null>(null);
   const started = useRef(false);
 
   const open = useOpenDeck();
@@ -60,7 +62,8 @@ export function GenerateProgress({
         await generateDeck(
           request,
           ({ event, data }) => {
-            if (event === "slide") setSlides((current) => [...current, data.draft]);
+            if (event === "start") setSendsTo(data.provider);
+            else if (event === "slide") setSlides((current) => [...current, data.draft]);
             else if (event === "repair") {
               const count = new Set(data.violations.map((violation) => violation.source)).size;
               setStatus({ state: "repairing", round: data.round, count });
@@ -115,6 +118,7 @@ export function GenerateProgress({
               ? "The deck is ready, but its name was taken meanwhile."
               : "Generation stopped. Nothing was saved."}
       </p>
+      {status.state === "running" || status.state === "repairing" ? <SendsTo provider={sendsTo} /> : null}
       <ol className="generated-slides">
         {slides.map((draft, index) => (
           <li key={index} className="generated-slide" data-testid="generated-slide">

@@ -89,6 +89,14 @@ export function ErrorNotice({ error }: { error: ApiError }) {
     <div className="error" role="alert">
       {error.path ? <strong className="error-path">{error.path}</strong> : null}
       <p>{error.message}</p>
+      {error.code === "LLM_PROVIDER_MISSING" ? (
+        // US-24: the task's provider was removed; there's no fallback, so the fix is in Settings.
+        <p>
+          <Link to="/settings#routing" data-testid="choose-model-link">
+            Choose a model in Settings
+          </Link>
+        </p>
+      ) : null}
       {Array.isArray(error.details?.violations) ? (
         <ul>
           {(error.details.violations as (string | { message: string })[]).map((violation) => {

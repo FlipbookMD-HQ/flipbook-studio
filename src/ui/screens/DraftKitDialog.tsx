@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, type Location } from "react-router-dom";
-import type { ApiError, KitKind, Proposal, ProposalOp } from "../../shared/api";
+import type { AiProvider, ApiError, KitKind, Proposal, ProposalOp } from "../../shared/api";
 import { ApiRequestError, discardProposal, draftKit } from "../api";
-import { AiAction } from "../ai";
+import { AiAction, SendsTo } from "../ai";
 import { ProposalReview } from "./ProposalReview";
 import { ErrorNotice } from "./Shell";
 
@@ -91,6 +91,8 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
   const [description, setDescription] = useState("");
   const [run, setRun] = useState<Run>({ state: "form" });
   const [showRaw, setShowRaw] = useState(false);
+  // US-24: where the running draft sends the description, from its `start` event.
+  const [sendsTo, setSendsTo] = useState<AiProvider | null>(null);
 
   useEffect(() => {
     if (dialog.current && !dialog.current.open) dialog.current.showModal();
@@ -102,6 +104,7 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
     const abort = new AbortController();
     controller.current = abort;
     setShowRaw(false);
+    setSendsTo(null);
     let text = "";
     let notice: string | null = null;
     setRun({ state: "running", text, notice });
@@ -111,7 +114,8 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
         { kind, name, description, ...(deckId ? { deckId } : {}) },
         ({ event, data }) => {
           if (abort.signal.aborted) return;
-          if (event === "token") {
+          if (event === "start") setSendsTo(data.provider);
+          else if (event === "token") {
             text += data.text;
             setRun({ state: "running", text, notice });
           } else if (event === "notice") {
@@ -196,6 +200,7 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
               <p className="muted" data-testid="draft-status">
                 {run.notice ?? `Drafting the ${label}…`}
               </p>
+              <SendsTo provider={sendsTo} />
               {run.text ? (
                 <pre className="ai-tokens" data-testid="ai-tokens">
                   {run.text}
