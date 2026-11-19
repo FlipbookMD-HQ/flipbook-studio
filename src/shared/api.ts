@@ -230,7 +230,14 @@ export const DeleteSlideQuerySchema = z.object({ baseHash: Hash });
 // US-17: undo and redo (tech-spec D21). The labels of the next undo and redo, or null.
 export const HistorySchema = z.object({ undo: z.string().nullable(), redo: z.string().nullable() });
 export type History = z.infer<typeof HistorySchema>;
-export const UndoResponseSchema = StructureResponseSchema.extend({ history: HistorySchema });
+export const UndoResponseSchema = StructureResponseSchema.extend({
+  history: HistorySchema,
+  /**
+   * Set when the change was made but the deck's files no longer load (DECK_LOAD_FAILED); the
+   * slides, hashes and violations are then empty, and Undo/Redo stay available to get back.
+   */
+  loadError: ApiErrorSchema.nullable().optional(),
+});
 export type UndoResponse = z.infer<typeof UndoResponseSchema>;
 
 // US-16: deck images (tech-spec D18-D20).
@@ -922,7 +929,9 @@ export const RestoreRequestSchema = z.object({ expectHead: z.string().regex(SHA,
 export type RestoreRequest = z.infer<typeof RestoreRequestSchema>;
 export const RestoreParamsSchema = z.object({ sha: z.string().regex(SHA, "Not a version ID.") });
 export const RestoreResponseSchema = z.object({
-  deck: DeckDetailSchema,
+  /** null when the restored files don't load as a deck (see `loadError`); Undo still works. */
+  deck: DeckDetailSchema.nullable(),
+  loadError: ApiErrorSchema.nullable().optional(),
   history: HistorySchema,
   state: HistoryStateSchema,
   /** Version files left as they are: symlinks, submodules, hidden or very large files. */
@@ -950,7 +959,9 @@ export type VersionViewResponse = z.infer<typeof VersionViewResponseSchema>;
 export const RestoredAssetSchema = z.object({ from: z.string(), to: z.string() });
 export type RestoredAsset = z.infer<typeof RestoredAssetSchema>;
 export const SlideRestoreResponseSchema = z.object({
-  deck: DeckDetailSchema,
+  /** null when the deck no longer loads after the restore (see `loadError`); Undo still works. */
+  deck: DeckDetailSchema.nullable(),
+  loadError: ApiErrorSchema.nullable().optional(),
   history: HistorySchema,
   /** The restored slide's ID in the deck now (single-file IDs are positions). */
   slideId: z.string(),

@@ -275,3 +275,29 @@ describe("POST /api/decks/:id/discard", () => {
     expect(await fs.readFile(path.join(deckDir, "notes.md"), "utf8")).toBe("x\n");
   });
 });
+
+describe("restoring a version whose files don't load", () => {
+  it("restores it, answers 200 with deck null and loadError, and undo brings the deck back", async () => {
+    const workspace = await tempDir("studio-restore-broken-");
+    await write(path.join(workspace, "talk"), { ...FOLDER_DECK, "presentation.yml": "title: [unclosed\n" });
+    initRepo(workspace);
+    const broken = commit(workspace, "broken");
+    await write(path.join(workspace, "talk"), FOLDER_DECK);
+    const fixed = commit(workspace, "fixed");
+    const { restore, undo } = await studio(workspace);
+
+    const restored = await restore(broken, fixed);
+    expect(restored.status).toBe(200);
+    expect(restored.body.deck).toBeNull();
+    expect(restored.body.loadError.code).toBe("DECK_LOAD_FAILED");
+    expect(restored.body.history.undo).toMatch(/^Restore/);
+    expect(await fs.readFile(path.join(workspace, "talk/presentation.yml"), "utf8")).toBe(
+      "title: [unclosed\n",
+    );
+
+    const undone = await undo();
+    expect(undone.status).toBe(200);
+    expect(undone.body.loadError ?? null).toBeNull();
+    expect(await tree(path.join(workspace, "talk"))).toEqual(FOLDER_DECK);
+  });
+});

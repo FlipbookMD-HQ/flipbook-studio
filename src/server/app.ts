@@ -44,6 +44,7 @@ import {
   GitInitRequestSchema,
   SaveVersionRequestSchema,
   VersionsQuerySchema,
+  type ApiError,
 } from "../shared/api.js";
 import { deckAssets, deleteAsset, uploadAsset } from "./assets.js";
 import { StudioError } from "./errors.js";
@@ -356,6 +357,22 @@ export function createApp(options: AppOptions) {
       ),
     );
   });
+  /**
+   * Loads the deck after a write that already happened. If its files no longer load, the write
+   * still stands (it is in the journal), so this returns the load error instead of failing the
+   * request: the client then shows the error with Undo and Redo to get back.
+   */
+  const afterWrite = async <T>(
+    load: () => Promise<T>,
+  ): Promise<{ value: T | null; loadError: ApiError | null }> => {
+    try {
+      return { value: await load(), loadError: null };
+    } catch (error) {
+      if (error instanceof StudioError && error.code === "DECK_LOAD_FAILED")
+        return { value: null, loadError: error.toJSON() };
+      throw error;
+    }
+  };
   // US-17: undo and redo.
   api.get("/decks/:id/history", async (c) =>
     c.json(journal.history(await findDeck(options.workspace, c.req.param("id")))),
@@ -364,8 +381,14 @@ export function createApp(options: AppOptions) {
     api.post(`/decks/:id/${direction}`, async (c) => {
       const deck = await findDeck(options.workspace, c.req.param("id"));
       const history = await journal[direction](deck);
-      const { slides, hashes, violations } = await structureResult(deck, c.req.param("id"));
-      return c.json({ slides, hashes, violations, history });
+      const { value, loadError } = await afterWrite(() => structureResult(deck, c.req.param("id")));
+      return c.json({
+        slides: value?.slides ?? [],
+        hashes: value?.hashes ?? {},
+        violations: value?.violations ?? [],
+        history,
+        loadError,
+      });
     });
   }
   // US-23: version history (git).
@@ -392,8 +415,10 @@ export function createApp(options: AppOptions) {
   const restored = async (id: string, run: (deck: DeckEntry) => Promise<{ skipped: unknown[] }>) => {
     const deck = await findDeck(options.workspace, id);
     const { skipped } = await withGit(() => run(deck));
+    const { value: detail, loadError } = await afterWrite(() => deckDetail(options.workspace, id));
     return {
-      deck: await deckDetail(options.workspace, id),
+      deck: detail,
+      loadError,
       history: journal.history(deck),
       state: await withGit(() => versions.state(deck)),
       skipped,
@@ -432,8 +457,12 @@ export function createApp(options: AppOptions) {
     const { sha } = RestoreParamsSchema.parse({ sha: c.req.param("sha") });
     const deck = await findDeck(options.workspace, c.req.param("id"));
     const result = await withGit(() => versionSlides.restore(deck, sha, c.req.param("slideId")));
+    const { value: detail, loadError } = await afterWrite(() =>
+      deckDetail(options.workspace, c.req.param("id")),
+    );
     return c.json({
-      deck: await deckDetail(options.workspace, c.req.param("id")),
+      deck: detail,
+      loadError,
       history: journal.history(deck),
       ...result,
     });
