@@ -48,6 +48,16 @@ export const ERROR_CODES = [
   "SOURCE_ENCODING",
   "SOURCE_UNREADABLE",
   "SOURCE_EXPIRED",
+  // US-23: version history (git).
+  "GIT_NOT_INSTALLED",
+  "GIT_NOT_A_REPO",
+  "GIT_ALREADY_A_REPO",
+  "GIT_AUTHOR_MISSING",
+  "GIT_BUSY",
+  "GIT_COMMIT_FAILED",
+  "GIT_TIMEOUT",
+  "NO_CHANGES",
+  "VERSION_NOT_FOUND",
   "INTERNAL",
 ] as const;
 
@@ -439,10 +449,21 @@ export const LlmSettingsSchema = z.object({
   taskModels: TaskModelsSchema.optional(),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
+// US-23: the commit author Studio uses only when git config has none (passed with -c, never saved to git config).
+export const GitAuthorSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name.").max(100),
+  email: z
+    .string()
+    .trim()
+    .max(254)
+    .regex(/^[^\s@<>]+@[^\s@<>]+$/, "Enter an email address, such as you@example.com."),
+});
+export type GitAuthor = z.infer<typeof GitAuthorSchema>;
 export const SettingsSchema = z.object({
   version: z.literal(1),
   llm: LlmSettingsSchema.nullable(),
   lastWorkspace: z.string().nullable(),
+  git: z.object({ author: GitAuthorSchema.optional() }).optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 /** PUT /api/settings: a partial merge. `llm: null` removes the LLM; `apiKey: null` clears the key, leaving it out keeps it. */
@@ -455,6 +476,8 @@ export const SettingsPatchSchema = z
       .nullable()
       .optional(),
     lastWorkspace: z.string().nullable().optional(),
+    /** US-23: `author: null` forgets the saved author. */
+    git: z.object({ author: GitAuthorSchema.nullable() }).strict().optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
@@ -679,3 +702,55 @@ export const ChatDoneEventSchema = z.object({
   /** The model that ran (US-19). */
   model: z.string().optional(),
 });
+
+// US-23: version history (tech-spec D36, D37, D43). A Version is one commit that touches the deck.
+export const VersionSchema = z.object({
+  sha: z.string(),
+  /** The commit subject. */
+  note: z.string(),
+  author: z.string(),
+  /** ISO-8601 UTC, the author date. */
+  time: z.string(),
+  /** Slides added, removed or modified versus the version before it. */
+  slidesChanged: z.number().int().nonnegative(),
+});
+export type Version = z.infer<typeof VersionSchema>;
+export const HistoryStateSchema = z.object({
+  state: z.enum(["ready", "no-repo", "no-git", "unsupported"]),
+  reason: z.string().nullable(),
+  repoRoot: z.string().nullable(),
+  canInit: z.object({ deck: z.boolean(), workspace: z.boolean() }),
+  /** The deck's latest version, or null (no repo, or no version yet). */
+  head: VersionSchema.nullable(),
+  /** The deck has changes since `head`. */
+  dirty: z.boolean(),
+  /** Paths relative to the deck folder (or the single file's folder). */
+  changes: z.array(z.object({ path: z.string(), status: z.enum(["added", "modified", "deleted"]) })),
+  detached: z.boolean(),
+});
+export type HistoryState = z.infer<typeof HistoryStateSchema>;
+export const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+export const VERSION_NOTE_MAX = 200;
+export const VersionsQuerySchema = z.object({
+  before: z.string().regex(SHA, "Not a version ID.").optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+export const VersionsResponseSchema = z.object({
+  history: HistoryStateSchema,
+  versions: z.array(VersionSchema),
+  /** The `before` cursor for the next page, or null on the last page. */
+  next: z.string().nullable(),
+});
+export type VersionsResponse = z.infer<typeof VersionsResponseSchema>;
+export const SaveVersionRequestSchema = z.object({
+  note: z
+    .string()
+    .max(VERSION_NOTE_MAX, `Use at most ${VERSION_NOTE_MAX} characters.`)
+    .refine((note) => !/[\r\n]/.test(note), "Use one line.")
+    .optional(),
+});
+export const SaveVersionResponseSchema = z.object({ version: VersionSchema, history: HistoryStateSchema });
+export type SaveVersionResponse = z.infer<typeof SaveVersionResponseSchema>;
+export const GitInitRequestSchema = z.object({ deckId: z.string(), at: z.enum(["deck", "workspace"]) });
+export type GitInitRequest = z.infer<typeof GitInitRequestSchema>;
+export const GitInitResponseSchema = z.object({ history: HistoryStateSchema });
