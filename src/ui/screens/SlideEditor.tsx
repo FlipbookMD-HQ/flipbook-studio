@@ -13,6 +13,7 @@ import { AiPanel } from "./AiPanel";
 import { ChatPanel } from "./ChatPanel";
 import { InsertImageDialog } from "./InsertImageDialog";
 import { GeneratedUsageNotice } from "./GenerateProgress";
+import { DeckLoadError } from "./DeckLoadError";
 import { assetsKey, uploadFiles } from "./ImagesPanel";
 import { altFromPath, hasImage, imageInsertion, imageLine, replaceFirstImage } from "../images";
 import type { EditorView } from "codemirror";
@@ -166,13 +167,7 @@ export function SlideEditor() {
   }, [dirty]);
 
   if (deck.isPending) return <Shell>Loading slide…</Shell>;
-  if (deck.isError) {
-    return (
-      <Shell>
-        <ErrorNotice error={asApiError(deck.error)} />
-      </Shell>
-    );
-  }
+  if (deck.isError) return <DeckLoadError deckId={id} error={asApiError(deck.error)} />;
   if (!slide) {
     return (
       <Shell>
@@ -253,6 +248,8 @@ export function SlideEditor() {
           onRestored={(result) => {
             // US-26: reload the open slide; if the restore removed it, move to slide 1.
             loadedFor.current = null;
+            // The restored files don't load as a deck: the deck screen shows why, with Undo.
+            if (!result.deck) return navigate(`/decks/${id}`, { replace: true });
             if (!result.deck.slides.some((item) => item.id === slideId)) {
               const first = result.deck.slides[0];
               navigate(first ? `/decks/${id}/slides/${encodeURIComponent(first.id)}` : `/decks/${id}`, {

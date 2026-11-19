@@ -188,3 +188,28 @@ test("unsaved edits disable Restore; a restore that removes the open slide moves
   await expect(rows(page)).toHaveCount(4);
   expect(await exists(S4)).toBe(false);
 });
+
+test("restoring a version whose files don't load shows the error with Undo, and Undo brings the deck back", async ({
+  page,
+}) => {
+  const manifest = await read("presentation.yml");
+  await fs.writeFile(path.join(deckDir, "presentation.yml"), "title: [unclosed\n");
+  commitAll("broken");
+  await fs.writeFile(path.join(deckDir, "presentation.yml"), manifest);
+  commitAll("fixed");
+
+  await page.goto(`${studio!.url}decks/${DECK}`);
+  await expect(page.getByRole("heading", { name: "Brief a Decision", level: 1 }).first()).toBeVisible();
+  await openHistory(page);
+  await entry(page, "broken").getByRole("button", { name: "Restore deck" }).click();
+  await page.getByTestId("restore-confirm").getByRole("button", { name: "Restore" }).click();
+
+  // The restore happened; the deck screen says why it can't show the deck, and offers Undo.
+  await expect(page.getByTestId("deck-load-undo-hint")).toBeVisible();
+  expect(await read("presentation.yml")).toBe("title: [unclosed\n");
+  await expect(undoButton(page)).toHaveAccessibleName('Undo: Restore "broken"');
+
+  await undoButton(page).click();
+  await expect(page.getByRole("heading", { name: "Brief a Decision", level: 1 }).first()).toBeVisible();
+  expect(await read("presentation.yml")).toBe(manifest);
+});

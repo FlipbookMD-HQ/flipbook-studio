@@ -215,3 +215,41 @@ describe("undo and redo routes", () => {
     expect(await history()).toEqual({ undo: null, redo: null });
   });
 });
+
+describe("undo into files that don't load", () => {
+  it("applies the undo, answers 200 with loadError, and keeps redo and undo working", async () => {
+    const { root, deckId, call, detail, history, undo, redo } = await setup();
+    const deck = await detail();
+    const slide = deck.slides[0]!;
+    const saved = await call("PUT", `/api/decks/${deckId}/slides/${encodeURIComponent(slide.id)}`, {
+      baseHash: deck.hashes[slide.file],
+      draft: { ...slide.draft, markdown: "# First\n\nChanged." },
+    });
+    expect(saved.status).toBe(200);
+    // presentation.yml breaks outside Studio; it isn't part of the saved step, so undo still runs.
+    await fs.writeFile(path.join(root, "talk/presentation.yml"), "title: [unclosed\n");
+
+    const undone = await undo();
+    expect(undone.status).toBe(200);
+    expect(undone.json.loadError.code).toBe("DECK_LOAD_FAILED");
+    expect(undone.json).toMatchObject({ slides: [], hashes: {}, violations: [] });
+    expect(undone.json.history).toEqual({ undo: null, redo: "Edit slide 1" });
+    expect(await history()).toEqual({ undo: null, redo: "Edit slide 1" });
+    // The undo really happened: the slide file is back to its original bytes.
+    expect(await fs.readFile(path.join(root, "talk", slide.file), "utf8")).toBe(
+      FOLDER_DECK[slide.file as keyof typeof FOLDER_DECK],
+    );
+
+    const redone = await redo();
+    expect(redone.status).toBe(200);
+    expect(redone.json.loadError.code).toBe("DECK_LOAD_FAILED");
+    expect(await fs.readFile(path.join(root, "talk", slide.file), "utf8")).toContain("Changed.");
+
+    // Fixing the file makes the deck load again, and responses carry no loadError.
+    await fs.writeFile(path.join(root, "talk/presentation.yml"), FOLDER_DECK["presentation.yml"]!);
+    const again = await undo();
+    expect(again.status).toBe(200);
+    expect(again.json.loadError ?? null).toBeNull();
+    expect(again.json.slides.length).toBe(2);
+  });
+});

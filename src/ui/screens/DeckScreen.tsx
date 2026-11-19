@@ -3,11 +3,12 @@ import { useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ViolationBadge, ViolationsPanel, violationsFor } from "./Violations";
 import { ApiRequestError, getDeck } from "../api";
-import { ErrorNotice, Shell } from "./Shell";
+import { Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
 import { ImagesPanel } from "./ImagesPanel";
 import { DuplicateDeckButton } from "./Duplicate";
 import { GeneratedUsageNotice } from "./GenerateProgress";
+import { DeckLoadError } from "./DeckLoadError";
 
 export function DeckScreen() {
   const { id = "" } = useParams();
@@ -24,11 +25,7 @@ export function DeckScreen() {
       deck.error instanceof ApiRequestError
         ? deck.error.error
         : { code: "INTERNAL" as const, message: deck.error.message };
-    return (
-      <Shell>
-        <ErrorNotice error={error} />
-      </Shell>
-    );
+    return <DeckLoadError deckId={id} error={error} />;
   }
 
   const { title, path, slides, violations, hasBlueprint } = deck.data;

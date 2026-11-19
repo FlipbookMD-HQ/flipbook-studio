@@ -505,7 +505,9 @@ export function HistoryPanel({
   };
 
   const applyRestored = (result: RestoreResponse) => {
-    queryClient.setQueryData(["deck", deckId], result.deck);
+    // A null deck: the files no longer load; refetching shows the load error with Undo.
+    if (result.deck) queryClient.setQueryData(["deck", deckId], result.deck);
+    else void queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
     queryClient.setQueryData(["history", deckId], result.history);
     for (const queryKey of [versionsKey(deckId), assetsKey(deckId), ["workspace"]])
       void queryClient.invalidateQueries({ queryKey });
@@ -514,7 +516,9 @@ export function HistoryPanel({
 
   /** US-27: one slide came back from a version; the deck, undo label and images changed. */
   const applySlideRestored = (result: SlideRestoreResponse) => {
-    queryClient.setQueryData(["deck", deckId], result.deck);
+    // A null deck: the files no longer load; refetching shows the load error with Undo.
+    if (result.deck) queryClient.setQueryData(["deck", deckId], result.deck);
+    else void queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
     queryClient.setQueryData(["history", deckId], result.history);
     for (const queryKey of [versionsKey(deckId), assetsKey(deckId), ["workspace"]])
       void queryClient.invalidateQueries({ queryKey });
