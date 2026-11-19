@@ -6,9 +6,10 @@ import type {
   DeckDetail,
   Proposal,
   ProposalOp,
+  Usage,
 } from "../../shared/api";
 import { ApiRequestError, chatDeck } from "../api";
-import { AiAction, SendsTo, useLlmStatus } from "../ai";
+import { AiAction, SendsTo, UsageNote, useLlmStatus } from "../ai";
 import { ProposalReview } from "./ProposalReview";
 import { ErrorNotice } from "./Shell";
 
@@ -27,6 +28,8 @@ type Entry =
       model?: string;
       /** US-24: where this turn was sent, from its `start` event. */
       provider?: AiProvider;
+      /** US-25: the tokens this turn used, as the provider reported them (null: not reported). */
+      usage?: Usage | null;
     };
 
 interface ChatState {
@@ -133,6 +136,7 @@ export function ChatPanel({
         { deckId: deck.id, sessionId: chat.sessionId, message: text, slideId },
         ({ event, data }) => {
           if (event === "start") updateLast({ provider: data.provider });
+          else if (event === "usage") updateLast({ usage: data.usage });
           else if (event === "token") {
             reply += data.text;
             updateLast({ text: reply });
@@ -141,10 +145,18 @@ export function ChatPanel({
             updateLast({ notices: [...notices] });
           } else if (event === "proposal") updateLast({ proposal: data });
           else if (event === "done") {
-            updateLast({ done: true, ...(data.model ? { model: data.model } : {}) });
+            updateLast({
+              done: true,
+              ...(data.model ? { model: data.model } : {}),
+              ...(data.usage !== undefined ? { usage: data.usage } : {}),
+            });
             if (data.sessionId) setChat((current) => ({ ...current, sessionId: data.sessionId! }));
           } else if (event === "failed")
-            updateLast({ done: true, error: data.error.code === "CANCELLED" ? null : data.error });
+            updateLast({
+              done: true,
+              error: data.error.code === "CANCELLED" ? null : data.error,
+              ...(data.usage !== undefined ? { usage: data.usage } : {}),
+            });
         },
         abort.signal,
       );
@@ -208,6 +220,9 @@ export function ChatPanel({
                       {entry.model}
                     </small>
                   ) : null}
+                  <UsageNote
+                    run={{ provider: entry.provider ?? null, usage: entry.usage ?? null, ended: entry.done }}
+                  />
                   {entry.proposal && entry.closed ? (
                     <p className="muted" data-testid="chat-closed">
                       Review closed.

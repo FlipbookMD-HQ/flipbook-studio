@@ -840,6 +840,30 @@ export type AiProvider = z.infer<typeof AiProviderSchema>;
 export const AiStartEventSchema = z.object({ provider: AiProviderSchema, model: z.string() });
 export type AiStartEvent = z.infer<typeof AiStartEventSchema>;
 
+// US-25: tokens used by paid AI runs. `done` and `failed` carry `usage: Usage | null`, summed over
+// repair rounds (null for local runs, or when the provider reported none); paid runs also send
+// `usage { usage }` as the provider reports it. Totals are kept in memory for the session only.
+export const AiUsageEventSchema = z.object({ usage: UsageSchema });
+export type AiUsageEvent = z.infer<typeof AiUsageEventSchema>;
+export const UsageTotalSchema = z.object({
+  providerId: z.string(),
+  label: z.string(),
+  kind: ProviderKindSchema,
+  /** Paid AI runs that sent at least one request. */
+  requests: z.number().int().nonnegative(),
+  input: z.number().int().nonnegative(),
+  output: z.number().int().nonnegative(),
+  /** Runs whose provider sent no usage (also a run cancelled before usage arrived). */
+  unreported: z.number().int().nonnegative(),
+});
+export type UsageTotal = z.infer<typeof UsageTotalSchema>;
+export const UsageResponseSchema = z.object({
+  /** When this Studio started: totals reset on restart. */
+  since: z.string(),
+  totals: z.array(UsageTotalSchema),
+});
+export type UsageResponse = z.infer<typeof UsageResponseSchema>;
+
 // US-23: version history (tech-spec D36, D37, D43). A Version is one commit that touches the deck.
 export const VersionSchema = z.object({
   sha: z.string(),

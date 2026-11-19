@@ -9,7 +9,7 @@ import {
   type ProviderView,
   type SettingsView,
 } from "../../shared/api";
-import { ApiRequestError, getSettings, listLlmModels, putSettings, testLlm } from "../api";
+import { ApiRequestError, getSettings, getUsage, listLlmModels, putSettings, testLlm } from "../api";
 import { decodeTaskModel, encodeTaskModel } from "../../shared/taskModels";
 import { modelMark } from "../modelMarks";
 import { ProvidersSection } from "./ProvidersSection";
@@ -54,6 +54,8 @@ const NO_TASK_MODELS: Record<AiTask, string> = { rewrite: "", generate: "", draf
 export function SettingsScreen() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings });
+  // US-25: session token totals, fresh each time Settings opens.
+  const usage = useQuery({ queryKey: ["usage"], queryFn: getUsage, staleTime: 0, refetchOnMount: "always" });
   const [baseUrl, setBaseUrl] = useState("");
   const [preset, setPreset] = useState<PresetId>("ollama");
   const [model, setModel] = useState("");
@@ -448,7 +450,11 @@ export function SettingsScreen() {
               ) : null}
             </div>
           </div>
-          <ProvidersSection providers={settings.data.providers ?? []} onChange={setProviders} />
+          <ProvidersSection
+            providers={settings.data.providers ?? []}
+            onChange={setProviders}
+            usage={usage.data}
+          />
         </section>
       </div>
     </Shell>

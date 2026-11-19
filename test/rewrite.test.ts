@@ -115,7 +115,10 @@ describe("POST /api/ai/rewrite", () => {
           violations: [],
         }),
       ]);
-      expect(events.at(-1)).toEqual({ event: "done", data: { model: "stub-model", provider: LOCAL } });
+      expect(events.at(-1)).toEqual({
+        event: "done",
+        data: { model: "stub-model", provider: LOCAL, usage: null },
+      });
       expect(await fs.readFile(file, "utf8")).toBe(before);
       const prompt = fake.requests[0]!.messages.at(-1)!.content;
       if (instruction.kind === "translate") expect(prompt).toContain("Portuguese");
@@ -196,7 +199,7 @@ describe("POST /api/ai/rewrite", () => {
     expect(events.map((event) => event.event)).not.toContain("proposal");
     expect(events.at(-1)).toEqual({
       event: "done",
-      data: { noChange: true, model: "stub-model", provider: LOCAL },
+      data: { noChange: true, model: "stub-model", provider: LOCAL, usage: null },
     });
   });
 

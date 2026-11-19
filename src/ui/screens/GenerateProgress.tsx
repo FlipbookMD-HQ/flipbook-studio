@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { AiProvider, ApiError, GenerateDeckRequest, SlideDraft, Violation } from "../../shared/api";
 import { ApiRequestError, generateDeck, getDeck, saveGeneratedDeck } from "../api";
-import { SendsTo, useLlmStatus } from "../ai";
+import { NO_RUN_USAGE, SendsTo, UsageNote, trackUsage, useLlmStatus, type RunUsage } from "../ai";
 import { ErrorNotice } from "./Shell";
 
 type Status =
@@ -16,18 +16,40 @@ type Status =
 const heading = (draft: SlideDraft) =>
   (draft.markdown.split("\n").find((line) => line.trim()) ?? "").replace(/^#+\s*/, "").slice(0, 80);
 
-/** Opens a new deck at its first failing slide, or at slide 1 (US-13, US-18). */
+/** Router state a generation leaves on the deck it opens (US-25): its tokens, shown once. */
+interface GeneratedState {
+  generatedUsage?: RunUsage;
+}
+
+/**
+ * Opens a new deck at its first failing slide, or at slide 1 (US-13, US-18). A generation passes
+ * its usage so the deck can show what the run used, since its progress panel closes (US-25).
+ */
 export function useOpenDeck() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  return async (deckId: string, violations: Violation[]) => {
+  return async (deckId: string, violations: Violation[], generatedUsage?: RunUsage) => {
     await queryClient.invalidateQueries({ queryKey: ["workspace"] });
     const deck = await getDeck(deckId);
     queryClient.setQueryData(["deck", deckId], deck);
     const sources = new Set(violations.map((violation) => violation.source));
     const target = deck.slides.find((slide) => sources.has(slide.source)) ?? deck.slides[0];
-    navigate(target ? `/decks/${deckId}/slides/${encodeURIComponent(target.id)}` : `/decks/${deckId}`);
+    const state: GeneratedState | undefined = generatedUsage ? { generatedUsage } : undefined;
+    navigate(target ? `/decks/${deckId}/slides/${encodeURIComponent(target.id)}` : `/decks/${deckId}`, {
+      state,
+    });
   };
+}
+
+/** "Generated with <provider> · N in · M out tokens" on the deck a paid generation opened (US-25). */
+export function GeneratedUsageNotice() {
+  const run = (useLocation().state as GeneratedState | null)?.generatedUsage;
+  if (!run?.provider || run.provider.kind === "local") return null;
+  return (
+    <div className="notice" role="status" data-testid="generated-usage">
+      Generated with <strong>{run.provider.label}</strong> · <UsageNote run={{ ...run, ended: true }} />
+    </div>
+  );
 }
 
 /**
@@ -50,6 +72,10 @@ export function GenerateProgress({
   const [saveAsError, setSaveAsError] = useState<ApiError | null>(null);
   // US-24: where the generation sends the topic or source, from its `start` event.
   const [sendsTo, setSendsTo] = useState<AiProvider | null>(null);
+  // US-25: the run's tokens, shown when it stops here (failed, or its name taken).
+  const [usage, setUsage] = useState<RunUsage>(NO_RUN_USAGE);
+  // The same, read synchronously when the deck opens (state updates aren't applied yet).
+  const usageRef = useRef<RunUsage>(NO_RUN_USAGE);
   const started = useRef(false);
 
   const open = useOpenDeck();
@@ -61,13 +87,17 @@ export function GenerateProgress({
       try {
         await generateDeck(
           request,
-          ({ event, data }) => {
+          (aiEvent) => {
+            usageRef.current = trackUsage(usageRef.current, aiEvent);
+            setUsage(usageRef.current);
+            const { event, data } = aiEvent;
             if (event === "start") setSendsTo(data.provider);
             else if (event === "slide") setSlides((current) => [...current, data.draft]);
             else if (event === "repair") {
               const count = new Set(data.violations.map((violation) => violation.source)).size;
               setStatus({ state: "repairing", round: data.round, count });
-            } else if (event === "done" && data.deckId) void open(data.deckId, data.violations ?? []);
+            } else if (event === "done" && data.deckId)
+              void open(data.deckId, data.violations ?? [], usageRef.current);
             else if (event === "failed") {
               const runId = data.error.details?.runId;
               setStatus(
@@ -97,7 +127,7 @@ export function GenerateProgress({
     setSaveAsError(null);
     try {
       const { deckId } = await saveGeneratedDeck(status.runId, saveAsName);
-      await open(deckId, []);
+      await open(deckId, [], usageRef.current);
     } catch (error) {
       setSaveAsError(
         error instanceof ApiRequestError ? error.error : { code: "INTERNAL", message: String(error) },
@@ -118,7 +148,11 @@ export function GenerateProgress({
               ? "The deck is ready, but its name was taken meanwhile."
               : "Generation stopped. Nothing was saved."}
       </p>
-      {status.state === "running" || status.state === "repairing" ? <SendsTo provider={sendsTo} /> : null}
+      {status.state === "running" || status.state === "repairing" ? (
+        <SendsTo provider={sendsTo} />
+      ) : (
+        <UsageNote run={usage} />
+      )}
       <ol className="generated-slides">
         {slides.map((draft, index) => (
           <li key={index} className="generated-slide" data-testid="generated-slide">

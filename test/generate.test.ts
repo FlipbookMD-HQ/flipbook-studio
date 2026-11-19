@@ -141,6 +141,7 @@ describe("POST /api/ai/generate-deck", () => {
       violations: [],
       model: "stub-model",
       provider: LOCAL,
+      usage: null,
     });
     const { presentation, violations } = await loadPresentation(path.join(root, "guide"), {
       blueprint: "evaluate",
@@ -205,6 +206,7 @@ describe("POST /api/ai/generate-deck", () => {
       violations: [],
       model: "stub-model",
       provider: LOCAL,
+      usage: null,
     });
     const text = await fs.readFile(path.join(root, "guide.slide.md"), "utf8");
     expect(text.indexOf("# Reading guide")).toBeLessThan(text.indexOf("# Phase 1"));
@@ -313,7 +315,7 @@ describe("POST /api/ai/generate-deck", () => {
       { event: "start", data: { provider: LOCAL, model: "stub-model" } },
       {
         event: "failed",
-        data: { error: expect.objectContaining({ code: "LLM_BAD_OUTPUT" }), provider: LOCAL },
+        data: { error: expect.objectContaining({ code: "LLM_BAD_OUTPUT" }), provider: LOCAL, usage: null },
       },
     ]);
     expect(await listing()).toEqual(before);

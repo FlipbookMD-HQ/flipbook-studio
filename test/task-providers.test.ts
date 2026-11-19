@@ -216,7 +216,8 @@ describe("each AI route runs on its task's provider", () => {
     ];
     anthropic.setScript({ apiKey: ANTHROPIC_KEY, chat: replies });
     const events = await run("generate", { name: "guide", title: "Reading guide", group: KIT });
-    expect(events.map((event) => event.event)).toEqual([
+    // US-25: `usage` progress events come and go as the provider reports tokens.
+    expect(events.map((event) => event.event).filter((event) => event !== "usage")).toEqual([
       "start",
       "slide",
       "slide",
