@@ -17,8 +17,8 @@ const MAX_FILE_BYTES = 16 * 1024 * 1024;
 export const SKIP_DIRS = new Set(["node_modules", "exports", "dist", TMP_DIR]);
 
 /** A file's bytes, or null when it doesn't exist. */
-type Bytes = Buffer | null;
-interface FileChange {
+export type Bytes = Buffer | null;
+export interface FileChange {
   /** Relative to the journal root (the deck folder, or the single file's folder). */
   path: string;
   before: Bytes;
@@ -45,6 +45,22 @@ const hashOf = (bytes: Bytes) => (bytes ? hashBytes(bytes) : null);
 export function journalRoot(deck: DeckEntry): string {
   return deck.kind === "folder" ? deck.absolute : path.dirname(deck.absolute);
 }
+
+/**
+ * True when the journal snapshots this path (relative to the journal root, `/`-separated), so a
+ * write to it can be undone: no hidden segment, no skipped folder, and for a single-file deck
+ * only its own file or a file directly in the shared `assets/` folder.
+ */
+export function journalCovers(deck: DeckEntry, relative: string): boolean {
+  const parts = relative.split("/");
+  if (parts.some((part) => !part || part.startsWith(".") || part === "..")) return false;
+  if (deck.kind === "single")
+    return relative === path.basename(deck.absolute) || (parts.length === 2 && parts[0] === "assets");
+  return !parts.slice(0, -1).some((part) => SKIP_DIRS.has(part));
+}
+
+/** Files larger than this are never part of a journal step. */
+export const MAX_JOURNALED_FILE_BYTES = MAX_FILE_BYTES;
 
 class DeckHistory {
   undo: Step[] = [];
@@ -198,18 +214,65 @@ export class DeckJournal {
         { details: { files: changed } },
       );
     }
-    for (const file of step.files) {
-      const target = path.join(root, file.path);
-      const from = direction === "undo" ? file.after : file.before;
-      const next = direction === "undo" ? file.before : file.after;
-      if (next === null) await removeFile(target, { roots: [root] });
-      else if (from === null) {
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await atomicCreate(target, next, { roots: [root] });
-      } else await atomicWrite(target, next, { baseHash: hashBytes(from), roots: [root] });
-    }
+    await writeChanges(
+      root,
+      step.files.map((file) =>
+        direction === "undo" ? { path: file.path, before: file.after, after: file.before } : file,
+      ),
+    );
     from.pop();
     to.push(step);
     return entry.history();
+  }
+
+  /**
+   * US-26 (D38): writes a planned set of file changes as one journal step named by the plan's
+   * `label`. `plan` runs inside this deck's queue; each change's `before` is what the file must
+   * hold right now.
+   * Every file is checked first, with undo's own check (409 UNDO_CONFLICT, nothing written),
+   * then written through core's guarded writes. What actually changed is recorded, even when a
+   * write fails part-way, so it can still be undone.
+   */
+  apply<T>(
+    deck: DeckEntry,
+    plan: () => Promise<{ label: string; changes: FileChange[]; result: T }>,
+  ): Promise<T> {
+    return this.serial(deck, async () => {
+      const { label, changes, result } = await plan();
+      const root = journalRoot(deck);
+      const changed: string[] = [];
+      for (const file of changes) {
+        const current = await fs.readFile(path.join(root, file.path)).catch(() => null);
+        if (hashOf(current) !== hashOf(file.before)) changed.push(file.path);
+      }
+      if (changed.length) {
+        throw new StudioError(
+          409,
+          "UNDO_CONFLICT",
+          `${changed.join(", ")} changed outside Studio, so nothing was written.`,
+          { details: { files: changed } },
+        );
+      }
+      const before = await this.snapshot(deck);
+      try {
+        await writeChanges(root, changes);
+      } finally {
+        this.record(deck, label, before, await this.snapshot(deck));
+      }
+      return result;
+    });
+  }
+}
+
+/** Writes each change's `after` over its `before` (null: delete, or create) through core's guarded writes. */
+async function writeChanges(root: string, changes: FileChange[]): Promise<void> {
+  for (const file of changes) {
+    if (sameBytes(file.before, file.after)) continue;
+    const target = path.join(root, file.path);
+    if (file.after === null) await removeFile(target, { roots: [root] });
+    else if (file.before === null) {
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await atomicCreate(target, file.after, { roots: [root] });
+    } else await atomicWrite(target, file.after, { baseHash: hashBytes(file.before), roots: [root] });
   }
 }

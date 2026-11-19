@@ -243,6 +243,16 @@ export function SlideEditor() {
               });
             }
           }}
+          onRestored={(result) => {
+            // US-26: reload the open slide; if the restore removed it, move to slide 1.
+            loadedFor.current = null;
+            if (!result.deck.slides.some((item) => item.id === slideId)) {
+              const first = result.deck.slides[0];
+              navigate(first ? `/decks/${id}/slides/${encodeURIComponent(first.id)}` : `/decks/${id}`, {
+                replace: true,
+              });
+            }
+          }}
         />
       }
     >

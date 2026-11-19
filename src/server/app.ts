@@ -93,6 +93,10 @@ import { prepareDraftKit, runDraftKit } from "./ai/draft-kit.js";
 import { ChatSessionStore, runChat } from "./ai/chat.js";
 import { GitRunner } from "./history/git.js";
 import { DeckHistoryService, gitFailure } from "./history/versions.js";
+// US-26: restore a whole deck from a version.
+import { DeckRestorer } from "./history/restore.js";
+import { RestoreParamsSchema, RestoreRequestSchema } from "../shared/api.js";
+import type { DeckEntry } from "./workspace.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Room for multipart boundaries and headers around an 8 MB image. */
@@ -354,6 +358,27 @@ export function createApp(options: AppOptions) {
     const { deckId, at } = GitInitRequestSchema.parse(await jsonBody(c));
     const deck = await findDeck(options.workspace, deckId);
     return c.json({ history: await withGit(() => versions.init(deck, at)) }, 201);
+  });
+  // US-26: restore a whole deck from a version, or discard its changes (D38). One journal step each.
+  const restorer = new DeckRestorer({ git, versions, journal });
+  const restored = async (id: string, run: (deck: DeckEntry) => Promise<{ skipped: unknown[] }>) => {
+    const deck = await findDeck(options.workspace, id);
+    const { skipped } = await withGit(() => run(deck));
+    return {
+      deck: await deckDetail(options.workspace, id),
+      history: journal.history(deck),
+      state: await withGit(() => versions.state(deck)),
+      skipped,
+    };
+  };
+  api.post("/decks/:id/versions/:sha/restore", async (c) => {
+    const { sha } = RestoreParamsSchema.parse({ sha: c.req.param("sha") });
+    const { expectHead } = RestoreRequestSchema.parse(await jsonBody(c));
+    return c.json(await restored(c.req.param("id"), (deck) => restorer.restore(deck, sha, expectHead)));
+  });
+  api.post("/decks/:id/discard", async (c) => {
+    const { expectHead } = RestoreRequestSchema.parse(await jsonBody(c));
+    return c.json(await restored(c.req.param("id"), (deck) => restorer.discard(deck, expectHead)));
   });
   // US-16: deck images.
   // US-18: start a deck from an uploaded file.

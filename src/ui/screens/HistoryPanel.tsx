@@ -6,19 +6,23 @@ import {
   type ApiError,
   type GitAuthor,
   type HistoryState,
+  type RestoreResponse,
   type Version,
 } from "../../shared/api";
 import {
   ApiRequestError,
+  discardDeck,
   getDeck,
   getVersions,
   getWorkspace,
   initGit,
   putSettings,
+  restoreDeck,
   saveVersion,
 } from "../api";
 import { DECK_WRITTEN } from "../undo";
 import { ErrorNotice } from "./Shell";
+import { assetsKey } from "./ImagesPanel";
 
 // US-23: Save version and the timeline, in the deck editor's top bar.
 
@@ -208,11 +212,17 @@ export function Timeline({
   hasMore,
   loading,
   onLoadMore,
+  onRestore,
+  restoreBlocked,
 }: {
   versions: Version[];
   hasMore: boolean;
   loading?: boolean;
   onLoadMore: () => void;
+  /** US-26: Restore deck on each entry (left out when not given). */
+  onRestore?: (version: Version) => void;
+  /** Why Restore deck is disabled right now (unsaved edits, busy), if it is. */
+  restoreBlocked?: string | null;
 }) {
   if (!versions.length) return <p className="muted">No versions yet.</p>;
   return (
@@ -225,6 +235,18 @@ export function Timeline({
               <time dateTime={version.time}>{new Date(version.time).toLocaleString()}</time> ·{" "}
               {version.author} · {slidesText(version.slidesChanged)} · <code>{version.sha.slice(0, 7)}</code>
             </span>
+            {onRestore ? (
+              <button
+                type="button"
+                className="history-restore"
+                disabled={Boolean(restoreBlocked)}
+                title={restoreBlocked ?? `Put the whole deck back to “${version.note}”`}
+                aria-label={`Restore deck to ${version.note}`}
+                onClick={() => onRestore(version)}
+              >
+                Restore deck
+              </button>
+            ) : null}
           </li>
         ))}
       </ol>
@@ -237,20 +259,138 @@ export function Timeline({
   );
 }
 
-/** The History button and its panel. */
-export function HistoryControl({ deckId }: { deckId: string }) {
+// US-26: Restore deck.
+
+/** The files Discard deletes: the deck's new files (git status "added"; ignored files never show). */
+export function discardDeletes(history: HistoryState): string[] {
+  return history.changes.filter((change) => change.status === "added").map((change) => change.path);
+}
+
+/** Asks before a whole-deck restore, saying what it does and doesn't do. */
+export function RestoreConfirm({
+  version,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  version: Version;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="history-offer" role="alertdialog" aria-label="Restore deck" data-testid="restore-confirm">
+      <p>
+        Restore the whole deck to <strong>“{version.note}”</strong>? Its slides and images become exactly what
+        they were in that version. No commit is made and no version is deleted; you can undo it.
+      </p>
+      <button type="button" className="primary" disabled={busy} onClick={onConfirm}>
+        Restore
+      </button>
+      <button type="button" className="link" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/** The deck has changes since its last version: save them, discard them, or stop. */
+export function DirtyDialog({
+  version,
+  history,
+  busy,
+  onSave,
+  onDiscard,
+  onCancel,
+}: {
+  version: Version;
+  history: HistoryState;
+  busy?: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}) {
+  const deletes = discardDeletes(history);
+  const count = history.changes.length;
+  return (
+    <div
+      className="history-offer"
+      role="alertdialog"
+      aria-label="Unsaved version changes"
+      data-testid="restore-dirty"
+    >
+      <p>
+        The deck has {count} {count === 1 ? "change" : "changes"} since{" "}
+        {history.head ? `“${history.head.note}”` : "its last version"}. Before restoring “{version.note}”:
+      </p>
+      <button type="button" className="primary" disabled={busy} onClick={onSave}>
+        Save version first
+      </button>
+      <button type="button" className="danger" disabled={busy} onClick={onDiscard}>
+        Discard my changes
+      </button>
+      {deletes.length ? (
+        <div className="muted" data-testid="discard-deletes">
+          Discard deletes {deletes.length === 1 ? "this new file" : `these ${deletes.length} new files`}:
+          <ul>
+            {deletes.map((file) => (
+              <li key={file}>
+                <code>{file}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="muted" data-testid="discard-deletes">
+          Discard deletes no files; it puts back the changed ones.
+        </p>
+      )}
+      <button type="button" className="link" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/** The History button and its panel. `blocked` disables Restore deck (unsaved edits). */
+export function HistoryControl({
+  deckId,
+  blocked,
+  onRestored,
+}: {
+  deckId: string;
+  blocked?: string | null;
+  onRestored?: (result: RestoreResponse) => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <span className="history-control">
       <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         History
       </button>
-      {open ? <HistoryPanel deckId={deckId} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <HistoryPanel
+          deckId={deckId}
+          blocked={blocked}
+          onRestored={onRestored}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </span>
   );
 }
 
-export function HistoryPanel({ deckId, onClose }: { deckId: string; onClose: () => void }) {
+export function HistoryPanel({
+  deckId,
+  onClose,
+  blocked: editsBlocked = null,
+  onRestored,
+}: {
+  deckId: string;
+  onClose: () => void;
+  blocked?: string | null;
+  onRestored?: (result: RestoreResponse) => void;
+}) {
   const queryClient = useQueryClient();
   const versions = useInfiniteQuery({
     queryKey: versionsKey(deckId),
@@ -267,6 +407,9 @@ export function HistoryPanel({ deckId, onClose }: { deckId: string; onClose: () 
   const [authorError, setAuthorError] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  // US-26: the restore being confirmed, and which question is showing.
+  const [pending, setPending] = useState<{ version: Version; step: "confirm" | "dirty" } | null>(null);
+  const [restored, setRestored] = useState<string | null>(null);
 
   // Any deck write (or undo) can make the deck dirty again.
   useEffect(() => {
@@ -338,7 +481,84 @@ export function HistoryPanel({ deckId, onClose }: { deckId: string; onClose: () 
     await save();
   };
 
+  const applyRestored = (result: RestoreResponse) => {
+    queryClient.setQueryData(["deck", deckId], result.deck);
+    queryClient.setQueryData(["history", deckId], result.history);
+    for (const queryKey of [versionsKey(deckId), assetsKey(deckId), ["workspace"]])
+      void queryClient.invalidateQueries({ queryKey });
+    onRestored?.(result);
+  };
+
+  const restore = async (version: Version, expectHead: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await restoreDeck(deckId, version.sha, expectHead);
+      setPending(null);
+      setRestored(version.note);
+      applyRestored(result);
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      if (apiError.code === "DECK_DIRTY") setPending({ version, step: "dirty" });
+      else {
+        setPending(null);
+        setError(apiError);
+      }
+      void refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startRestore = (version: Version) => {
+    if (!history || editsBlocked) return;
+    setError(null);
+    setSaved(null);
+    setRestored(null);
+    setPending({ version, step: history.dirty ? "dirty" : "confirm" });
+  };
+
+  /** Save version first, then restore on top of the new version. */
+  const saveThenRestore = async (version: Version) => {
+    setBusy(true);
+    setError(null);
+    let head: string;
+    try {
+      head = (await saveVersion(deckId, note.trim())).version.sha;
+      setNote("");
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      setPending(null);
+      if (apiError.code === "GIT_AUTHOR_MISSING") setNeedsAuthor(true);
+      else setError(apiError);
+      setBusy(false);
+      void refresh();
+      return;
+    }
+    await refresh();
+    await restore(version, head);
+  };
+
+  /** Discard my changes (back to the latest version), then restore. */
+  const discardThenRestore = async (version: Version) => {
+    const head = history?.head?.sha;
+    if (!head) return;
+    setBusy(true);
+    setError(null);
+    try {
+      applyRestored(await discardDeck(deckId, head));
+    } catch (caught) {
+      setPending(null);
+      setError(asApiError(caught));
+      setBusy(false);
+      void refresh();
+      return;
+    }
+    await restore(version, head);
+  };
+
   const disabled = history?.state === "no-git" || history?.state === "unsupported";
+  const restoreBlocked = editsBlocked ?? (busy ? "Busy…" : null);
   return (
     <section
       className={`popover history-panel${disabled ? " disabled" : ""}`}
@@ -409,6 +629,34 @@ export function HistoryPanel({ deckId, onClose }: { deckId: string; onClose: () 
         <AuthorForm busy={busy} error={authorError} onSubmit={(author) => void saveAuthor(author)} />
       ) : null}
       {error ? <GitErrorNotice error={error} /> : null}
+      {restored ? (
+        <p className="notice" role="status" data-testid="history-restored">
+          Restored “{restored}”. Undo puts the deck back.
+        </p>
+      ) : null}
+      {editsBlocked && history?.state === "ready" ? (
+        <p className="muted" data-testid="restore-blocked">
+          Restore deck: {editsBlocked}
+        </p>
+      ) : null}
+      {pending?.step === "confirm" ? (
+        <RestoreConfirm
+          version={pending.version}
+          busy={busy}
+          onConfirm={() => history?.head && void restore(pending.version, history.head.sha)}
+          onCancel={() => setPending(null)}
+        />
+      ) : null}
+      {pending?.step === "dirty" && history ? (
+        <DirtyDialog
+          version={pending.version}
+          history={history}
+          busy={busy}
+          onSave={() => void saveThenRestore(pending.version)}
+          onDiscard={() => void discardThenRestore(pending.version)}
+          onCancel={() => setPending(null)}
+        />
+      ) : null}
 
       {history?.state === "ready" ? (
         <Timeline
@@ -416,6 +664,8 @@ export function HistoryPanel({ deckId, onClose }: { deckId: string; onClose: () 
           hasMore={Boolean(versions.hasNextPage)}
           loading={versions.isFetchingNextPage}
           onLoadMore={() => void versions.fetchNextPage()}
+          onRestore={startRestore}
+          restoreBlocked={restoreBlocked}
         />
       ) : null}
     </section>
