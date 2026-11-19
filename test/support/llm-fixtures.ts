@@ -8,12 +8,19 @@ export type LlmFixture =
   | { kind: "invalidJson" }
   | { kind: "slowTokens"; ms: number; text: string }
   | { kind: "hang" }
-  | { kind: "status"; status: 401 | 403 | 404 | 500; body?: string }
-  | { kind: "hostile" };
+  | { kind: "status"; status: number; body?: string; headers?: Record<string, string> }
+  | { kind: "hostile" }
+  /** US-21: a 302 to another host (the client must refuse it). */
+  | { kind: "redirect"; location: string }
+  /** US-21: a captive portal or proxy page instead of the API. */
+  | { kind: "html" };
 
 export interface LlmScript {
-  /** Model ids for /v1/models (default ["stub-model"]), or a status fixture to fail with. */
-  models?: string[] | Extract<LlmFixture, { kind: "status" }>;
+  /**
+   * Model ids for /v1/models (default ["stub-model"]), or a status fixture to fail with. An object
+   * entry is sent as-is (US-21: capability fields such as OpenRouter's `architecture`).
+   */
+  models?: (string | { id: string; [field: string]: unknown })[] | Extract<LlmFixture, { kind: "status" }>;
   /** Chat answers, consumed in order (the last one repeats), or chosen per request. */
   chat?:
     | LlmFixture[]
@@ -22,6 +29,8 @@ export interface LlmScript {
   rejectResponseFormat?: boolean;
   /** Require `Authorization: Bearer <apiKey>`; anything else gets 401. */
   apiKey?: string;
+  /** US-21: answer 400 "stream_options is not supported" when a request sends stream_options. */
+  rejectStreamOptions?: boolean;
 }
 
 /** What a hostile model proposes: path traversal, script tags and ops on slides that don't exist. */

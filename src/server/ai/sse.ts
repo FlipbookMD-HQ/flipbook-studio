@@ -37,6 +37,8 @@ export function sseTask(
     model?: string;
     /** The AI task's label (US-19): named when its model is missing. */
     task?: string;
+    /** US-21: replaces stored keys in the `failed` event with their hints. */
+    scrub?: (text: string) => string;
   } = {},
 ): Response {
   const controller = new AbortController();
@@ -78,7 +80,11 @@ export function sseTask(
             apiError.message = `${options.task} is set to use ${options.model ?? "a model"}, which the server doesn't have. ${apiError.message} Or pick another model for it in Settings → Model for each task.`;
           }
           if (apiError.code === "INTERNAL") options.log?.(`ai INTERNAL ${(error as Error)?.stack ?? error}`);
-          write("failed", { error: apiError });
+          write("failed", {
+            error: options.scrub
+              ? (JSON.parse(options.scrub(JSON.stringify(apiError))) as ApiError)
+              : apiError,
+          });
         } finally {
           finish();
         }
