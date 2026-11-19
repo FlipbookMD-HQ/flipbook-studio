@@ -58,6 +58,7 @@ import {
   SaveVersionResponseSchema,
   GitInitResponseSchema,
   type GitInitRequest,
+  RestoreResponseSchema,
 } from "../shared/api";
 import { z } from "zod";
 import { DECK_WRITTEN, isDeckWrite } from "./undo";
@@ -427,3 +428,15 @@ export const saveVersion = (deckId: string, note: string) =>
   });
 export const initGit = (deckId: string, at: GitInitRequest["at"]) =>
   apiFetch("/api/git/init", GitInitResponseSchema, { method: "POST", body: JSON.stringify({ deckId, at }) });
+
+// US-26: restore a whole deck from a version, or discard its changes.
+export const restoreDeck = (deckId: string, sha: string, expectHead: string) =>
+  apiFetch(`${deckUrl(deckId)}/versions/${encodeURIComponent(sha)}/restore`, RestoreResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ expectHead }),
+  });
+export const discardDeck = (deckId: string, expectHead: string) =>
+  apiFetch(`${deckUrl(deckId)}/discard`, RestoreResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ expectHead }),
+  });

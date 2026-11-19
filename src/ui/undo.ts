@@ -28,5 +28,6 @@ export function undoShortcut(event: {
 /** Writes that can change a deck's history (anything but reads, previews and AI streams). */
 export function isDeckWrite(method: string, url: string): boolean {
   if (method === "GET" || method === "HEAD") return false;
+  if (/^\/api\/decks\/[^/]+\/(versions\/[^/]+\/restore|discard)$/.test(url)) return true; // US-26
   return /^\/api\/(decks\/[^/]+\/(slides|order|assets)|proposals\/[^/]+\/apply)/.test(url);
 }

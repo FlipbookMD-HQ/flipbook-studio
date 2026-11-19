@@ -64,6 +64,9 @@ export const ERROR_CODES = [
   "GIT_TIMEOUT",
   "NO_CHANGES",
   "VERSION_NOT_FOUND",
+  // US-26: restore a whole deck from a version.
+  "DECK_DIRTY",
+  "VERSION_STALE",
   "INTERNAL",
 ] as const;
 
@@ -888,3 +891,17 @@ export type SaveVersionResponse = z.infer<typeof SaveVersionResponseSchema>;
 export const GitInitRequestSchema = z.object({ deckId: z.string(), at: z.enum(["deck", "workspace"]) });
 export type GitInitRequest = z.infer<typeof GitInitRequestSchema>;
 export const GitInitResponseSchema = z.object({ history: HistoryStateSchema });
+
+// US-26: restore a whole deck from a version, or discard its changes (tech-spec D38, D42).
+// Both are one undoable journal step; neither makes a commit or changes HEAD, refs or the index.
+export const RestoreRequestSchema = z.object({ expectHead: z.string().regex(SHA, "Not a version ID.") });
+export type RestoreRequest = z.infer<typeof RestoreRequestSchema>;
+export const RestoreParamsSchema = z.object({ sha: z.string().regex(SHA, "Not a version ID.") });
+export const RestoreResponseSchema = z.object({
+  deck: DeckDetailSchema,
+  history: HistorySchema,
+  state: HistoryStateSchema,
+  /** Version files left as they are: symlinks, submodules, hidden or very large files. */
+  skipped: z.array(z.object({ path: z.string(), reason: z.string() })),
+});
+export type RestoreResponse = z.infer<typeof RestoreResponseSchema>;

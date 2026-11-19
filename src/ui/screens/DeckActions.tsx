@@ -5,6 +5,7 @@ import type {
   ExportJob,
   ExportRequest,
   ExportsInfo,
+  RestoreResponse,
   UndoResponse,
   Violation,
 } from "../../shared/api";
@@ -30,6 +31,7 @@ export function DeckActions({
   disabled,
   undoBlocked,
   onUndo,
+  onRestored,
 }: {
   deckId: string;
   slideIndex: number;
@@ -37,6 +39,8 @@ export function DeckActions({
   /** Why Undo and Redo are disabled right now (unsaved edits), if they are. */
   undoBlocked?: string | null;
   onUndo?: (result: UndoResponse) => void;
+  /** US-26: after Restore deck or Discard changes rewrote the deck's files. */
+  onRestored?: (result: RestoreResponse) => void;
 }) {
   const [presentError, setPresentError] = useState<ApiError | null>(null);
   const [announcerUrl, setAnnouncerUrl] = useState<string | null>(null);
@@ -65,7 +69,7 @@ export function DeckActions({
   return (
     <>
       <UndoControls deckId={deckId} blocked={undoBlocked} onChanged={onUndo} />
-      <HistoryControl deckId={deckId} />
+      <HistoryControl deckId={deckId} blocked={undoBlocked} onRestored={onRestored} />
       <button type="button" onClick={present} disabled={disabled}>
         Present
       </button>
