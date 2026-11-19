@@ -1,7 +1,8 @@
-import type { AiProvider, ApiError } from "../../shared/api.js";
+import type { AiProvider, ApiError, Usage } from "../../shared/api.js";
 import { StudioError } from "../errors.js";
 import { LlmError } from "../llm/provider.js";
 import { llmFailure, type FailureContext } from "../llm/routes.js";
+import type { UsageTally } from "./usage.js";
 
 export interface SseContext {
   /** Aborted when the client disconnects. */
@@ -49,6 +50,11 @@ export function sseTask(
     provider?: AiProvider;
     /** US-24: set for a paid provider, so its errors name it. */
     failure?: FailureContext;
+    /**
+     * US-25: a paid run's token count. Sent as `usage` events while it grows; `done` and `failed`
+     * carry the total (null when none was reported, and always null for local runs).
+     */
+    usage?: UsageTally | null;
   } = {},
 ): Response {
   const controller = new AbortController();
@@ -77,6 +83,10 @@ export function sseTask(
         }
       };
       const provider = options.provider ? { provider: options.provider } : {};
+      // US-25: every run that names its provider also says what it used (once, at its end).
+      const usage = (): { usage?: Usage | null } =>
+        options.provider ? { usage: options.usage?.settle() ?? null } : {};
+      options.usage?.onChange((total) => write("usage", { usage: total }));
       void (async () => {
         try {
           // US-24: the first event says where the content goes, before anything is sent there.
@@ -88,6 +98,7 @@ export function sseTask(
             ...(result ?? {}),
             ...(options.model ? { model: options.model } : {}),
             ...provider,
+            ...usage(),
           });
         } catch (error) {
           const apiError = controller.signal.aborted
@@ -106,6 +117,7 @@ export function sseTask(
               ? (JSON.parse(options.scrub(JSON.stringify(apiError))) as ApiError)
               : apiError,
             ...provider,
+            ...usage(),
           });
         } finally {
           finish();

@@ -88,6 +88,7 @@ describe("generate-deck from an uploaded file", () => {
       violations: [],
       model: "stub-model",
       provider: { id: "local", label: "Local", kind: "local" },
+      usage: null,
     });
 
     const prompt = fake.requests[0]!.messages.at(-1)!.content;

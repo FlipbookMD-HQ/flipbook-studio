@@ -6,7 +6,9 @@ import {
   type LlmTestResponse,
   type ProviderKind,
   type ProviderView,
+  type UsageResponse,
 } from "../../shared/api";
+import { formatTokens } from "../ai";
 import {
   ApiRequestError,
   createProvider,
@@ -342,14 +344,50 @@ export function AddProviderForm({
   );
 }
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+/**
+ * US-25: tokens per paid provider since Studio started, as the providers reported them. Tokens
+ * only: no prices or estimates (PRD non-goal). Kept in memory, so a restart starts again at zero.
+ */
+export function SessionUsage({ usage }: { usage: UsageResponse | undefined }) {
+  const totals = usage?.totals ?? [];
+  return (
+    <section className="session-usage" aria-label="Tokens this session" data-testid="session-usage">
+      <h3 className="card-subtitle">Tokens this session</h3>
+      {totals.length ? (
+        <ul className="usage-totals">
+          {totals.map((total) => (
+            <li key={total.providerId} data-testid={`usage-${total.providerId}`}>
+              <strong>{total.label}</strong> <span data-testid="usage-tokens">{formatTokens(total)}</span>{" "}
+              <span className="muted">
+                · {plural(total.requests, "request")}
+                {total.unreported ? ` · ${total.unreported} with usage not reported` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted" data-testid="no-usage">
+          No paid requests since Studio started.
+        </p>
+      )}
+      <p className="muted small">As each provider reports them. Resets when Studio restarts.</p>
+    </section>
+  );
+}
+
 /** Settings → Providers: the saved providers and a form to add one. */
 export function ProvidersSection({
   providers,
   onChange,
+  usage,
 }: {
   providers: ProviderView[];
   /** The new list, after an add, a change or a removal. */
   onChange: (providers: ProviderView[]) => void;
+  /** US-25: the session's token totals (GET /api/usage). */
+  usage?: UsageResponse;
 }) {
   const [adding, setAdding] = useState(false);
   const [justAdded, setJustAdded] = useState<string | null>(null);
@@ -374,6 +412,7 @@ export function ProvidersSection({
           onRemoved={(id) => onChange(providers.filter((item) => item.id !== id))}
         />
       ))}
+      {providers.length || usage?.totals.length ? <SessionUsage usage={usage} /> : null}
       {adding ? (
         <AddProviderForm
           providers={providers}

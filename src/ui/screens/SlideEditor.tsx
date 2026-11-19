@@ -12,6 +12,7 @@ import { DeckActions } from "./DeckActions";
 import { AiPanel } from "./AiPanel";
 import { ChatPanel } from "./ChatPanel";
 import { InsertImageDialog } from "./InsertImageDialog";
+import { GeneratedUsageNotice } from "./GenerateProgress";
 import { assetsKey, uploadFiles } from "./ImagesPanel";
 import { altFromPath, hasImage, imageInsertion, imageLine, replaceFirstImage } from "../images";
 import type { EditorView } from "codemirror";
@@ -263,6 +264,7 @@ export function SlideEditor() {
         hasBlueprint={data.hasBlueprint}
         currentSlideId={slideId}
       />
+      <GeneratedUsageNotice />
       <div className="editor">
         <SlideList
           deck={data}

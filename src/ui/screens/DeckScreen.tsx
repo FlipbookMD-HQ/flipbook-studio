@@ -7,6 +7,7 @@ import { ErrorNotice, Shell } from "./Shell";
 import { DeckActions } from "./DeckActions";
 import { ImagesPanel } from "./ImagesPanel";
 import { DuplicateDeckButton } from "./Duplicate";
+import { GeneratedUsageNotice } from "./GenerateProgress";
 
 export function DeckScreen() {
   const { id = "" } = useParams();
@@ -88,6 +89,7 @@ export function DeckScreen() {
           </a>
         </div>
       </header>
+      <GeneratedUsageNotice />
       {duplicated?.duplicatedFrom != null ? (
         <div className="notice" role="status" data-testid="duplicated-notice">
           <p>

@@ -91,6 +91,7 @@ import { sseTask } from "./ai/sse.js";
 import { prepareDraftKit, runDraftKit } from "./ai/draft-kit.js";
 import { ChatSessionStore, runChat } from "./ai/chat.js";
 import { resolveTaskLlm } from "./ai/resolve.js";
+import { UsageMeter } from "./ai/usage.js";
 import { GitRunner } from "./history/git.js";
 import { DeckHistoryService, gitFailure } from "./history/versions.js";
 // US-26: restore a whole deck from a version.
@@ -190,6 +191,8 @@ export function createApp(options: AppOptions) {
     () => {},
   );
   const llmProvider = options.llmProvider ?? defaultProviderFactory;
+  // US-25: tokens used by paid AI runs this session, in memory only.
+  const usageMeter = new UsageMeter();
   const proposals = new ProposalStore();
   const generations = new GenerationRuns();
   const sources = new SourceStore();
@@ -214,7 +217,7 @@ export function createApp(options: AppOptions) {
    * paid (US-24, no fallback), or 409 LLM_NOT_CONFIGURED / LLM_PROVIDER_MISSING before streaming.
    */
   const configuredLlm = async (task: AiTask) =>
-    resolveTaskLlm((await settingsStore).current(), task, llmProvider);
+    resolveTaskLlm((await settingsStore).current(), task, llmProvider, usageMeter);
 
   app.use("*", async (c, next) => {
     const requestId = crypto.randomBytes(4).toString("hex");
@@ -513,21 +516,23 @@ export function createApp(options: AppOptions) {
       ),
     ),
   );
+  // US-25: session token totals per paid provider (reset on restart).
+  api.get("/usage", (c) => c.json(usageMeter.view()));
   // US-12: AI rewrite and proposals.
   api.post("/ai/rewrite", async (c) => {
     const request = RewriteRequestSchema.parse(await jsonBody(c));
-    const { llm, provider, task, providerInfo: info, failure } = await configuredLlm("rewrite");
+    const { llm, provider, task, providerInfo: info, failure, usage } = await configuredLlm("rewrite");
     const prepared = await prepareRewrite(options.workspace, request);
     return sseTask(
       c.req.raw,
       (context) => runRewrite(context, prepared, request, { provider, llm, store: proposals, log }),
-      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure, usage },
     );
   });
   // US-13: generate a deck. Checks that can answer with plain JSON run before the stream opens.
   api.post("/ai/generate-deck", async (c) => {
     const request = GenerateDeckRequestSchema.parse(await jsonBody(c));
-    const { llm, provider, task, providerInfo: info, failure } = await configuredLlm("generate");
+    const { llm, provider, task, providerInfo: info, failure, usage } = await configuredLlm("generate");
     const prepared = await prepareGenerate(options.workspace, request, sources);
     return sseTask(
       c.req.raw,
@@ -539,7 +544,7 @@ export function createApp(options: AppOptions) {
           sources,
           log,
         }),
-      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure, usage },
     );
   });
   api.post("/ai/generate-deck/:runId/save-as", async (c) => {
@@ -549,18 +554,18 @@ export function createApp(options: AppOptions) {
   // US-14: draft a kit piece. Name checks answer with plain JSON before the stream opens.
   api.post("/ai/draft-kit", async (c) => {
     const request = DraftKitRequestSchema.parse(await jsonBody(c));
-    const { llm, provider, task, providerInfo: info, failure } = await configuredLlm("draft");
+    const { llm, provider, task, providerInfo: info, failure, usage } = await configuredLlm("draft");
     const prepared = await prepareDraftKit(options.workspace, options.library, request);
     return sseTask(
       c.req.raw,
       (context) => runDraftKit(context, prepared, request, { provider, llm, store: proposals, log }),
-      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure, usage },
     );
   });
   // US-15: chat about a deck. One stream per deck; the session lives in memory only.
   api.post("/ai/chat", async (c) => {
     const request = ChatRequestSchema.parse(await jsonBody(c));
-    const { llm, provider, task, providerInfo: info, failure } = await configuredLlm("chat");
+    const { llm, provider, task, providerInfo: info, failure, usage } = await configuredLlm("chat");
     await findDeck(options.workspace, request.deckId);
     const session = chats.open(request.deckId, request.sessionId);
     chats.begin(request.deckId);
@@ -579,7 +584,7 @@ export function createApp(options: AppOptions) {
           chats.end(request.deckId);
         }
       },
-      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure },
+      { log, baseUrl: llm.baseUrl, model: llm.model, task, scrub, provider: info, failure, usage },
     );
   });
   api.post("/proposals/:id/apply", async (c) => {

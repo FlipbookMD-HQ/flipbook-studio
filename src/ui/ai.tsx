@@ -1,9 +1,15 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { LOCAL_AI_PROVIDER, type AiProvider, type AiTask, type SettingsView } from "../shared/api";
+import {
+  LOCAL_AI_PROVIDER,
+  type AiProvider,
+  type AiTask,
+  type SettingsView,
+  type Usage,
+} from "../shared/api";
 import { modelId, paidModel } from "../shared/taskModels";
-import { getSettings } from "./api";
+import { getSettings, type AiEvent } from "./api";
 
 /**
  * Where an AI task runs, from settings (US-19, US-24): its own model, else the local default.
@@ -59,6 +65,51 @@ export function SendsTo({ provider }: { provider: AiProvider | null | undefined 
   return (
     <small className="sends-to" data-testid="sends-to" role="note">
       Sends to {provider.label}
+    </small>
+  );
+}
+
+/** US-25: what a run used, as the AI panels track it from its events. */
+export interface RunUsage {
+  /** Where the run went (its `start` event); null before it starts. */
+  provider: AiProvider | null;
+  /** The tokens reported so far; null when none were. */
+  usage: Usage | null;
+  /** The run finished, failed or was cancelled: its count can be shown. */
+  ended: boolean;
+}
+export const NO_RUN_USAGE: RunUsage = { provider: null, usage: null, ended: false };
+
+/** The next RunUsage after one stream event (`start` begins a new run; `done`/`failed` end it). */
+export function trackUsage(state: RunUsage, { event, data }: AiEvent): RunUsage {
+  if (event === "start") return { provider: data.provider, usage: null, ended: false };
+  if (event === "usage") return { ...state, usage: data.usage };
+  if (event === "done" || event === "failed")
+    return {
+      provider: data.provider ?? state.provider,
+      usage: data.usage !== undefined ? data.usage : state.usage,
+      ended: true,
+    };
+  return state;
+}
+
+/** A run cancelled from the panel: it keeps the usage reported before the cancel. */
+export const endUsage = (state: RunUsage): RunUsage => (state.provider ? { ...state, ended: true } : state);
+
+const count = (value: number) => value.toLocaleString("en-US");
+
+/** "N in · M out tokens": tokens only, never a price or an estimate (PRD non-goal). */
+export const formatTokens = (usage: Usage) => `${count(usage.input)} in · ${count(usage.output)} out tokens`;
+
+/**
+ * US-25: the tokens a finished or cancelled paid run used, as its provider reported them, or
+ * "usage not reported". Nothing for local runs, or while a run is still going.
+ */
+export function UsageNote({ run }: { run: RunUsage }) {
+  if (!run.ended || !run.provider || run.provider.kind === "local") return null;
+  return (
+    <small className="ai-usage muted" data-testid="ai-usage" title={`Reported by ${run.provider.label}`}>
+      {run.usage ? formatTokens(run.usage) : "usage not reported"}
     </small>
   );
 }

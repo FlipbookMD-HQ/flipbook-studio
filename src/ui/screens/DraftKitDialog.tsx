@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, type Location } from "react-router-dom";
 import type { AiProvider, ApiError, KitKind, Proposal, ProposalOp } from "../../shared/api";
 import { ApiRequestError, discardProposal, draftKit } from "../api";
-import { AiAction, SendsTo } from "../ai";
+import { AiAction, NO_RUN_USAGE, SendsTo, UsageNote, endUsage, trackUsage, type RunUsage } from "../ai";
 import { ProposalReview } from "./ProposalReview";
 import { ErrorNotice } from "./Shell";
 
@@ -93,6 +93,8 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
   const [showRaw, setShowRaw] = useState(false);
   // US-24: where the running draft sends the description, from its `start` event.
   const [sendsTo, setSendsTo] = useState<AiProvider | null>(null);
+  // US-25: the tokens of the last paid draft, shown once it ends (also after Cancel).
+  const [usage, setUsage] = useState<RunUsage>(NO_RUN_USAGE);
 
   useEffect(() => {
     if (dialog.current && !dialog.current.open) dialog.current.showModal();
@@ -105,6 +107,7 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
     controller.current = abort;
     setShowRaw(false);
     setSendsTo(null);
+    setUsage(NO_RUN_USAGE);
     let text = "";
     let notice: string | null = null;
     setRun({ state: "running", text, notice });
@@ -112,8 +115,10 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
     try {
       await draftKit(
         { kind, name, description, ...(deckId ? { deckId } : {}) },
-        ({ event, data }) => {
+        (aiEvent) => {
           if (abort.signal.aborted) return;
+          setUsage((current) => trackUsage(current, aiEvent));
+          const { event, data } = aiEvent;
           if (event === "start") setSendsTo(data.provider);
           else if (event === "token") {
             text += data.text;
@@ -149,6 +154,7 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
   return (
     <dialog ref={dialog} className="dialog wide" aria-labelledby="draft-kit-title" onClose={onClose}>
       <h2 id="draft-kit-title">Draft a {label} with AI</h2>
+      {run.state === "running" ? null : <UsageNote run={usage} />}
       {run.state === "review" ? (
         <ProposalReview
           proposal={run.proposal}
@@ -226,6 +232,7 @@ function DraftKitDialog({ kind, deckId, onClose }: { kind: KitKind; deckId?: str
                 type="button"
                 onClick={() => {
                   controller.current?.abort();
+                  setUsage(endUsage);
                   setRun({ state: "form" });
                 }}
               >
