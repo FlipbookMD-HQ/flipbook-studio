@@ -203,6 +203,9 @@ export async function launch(
   log(
     `Flipbook Studio\n  URL:       ${url}\n  Workspace: ${workspace}\n  Library:   ${options.library}\n  LLM:       ${llmBanner(settings)}`,
   );
+  // US-23 (D43): git is checked once, at startup; without git 2.30+ only History is off.
+  const git = await app.git.check();
+  if (!git.ok) log(`Warning: ${git.reason} Version history is off; everything else works.`);
   if (options.open) (deps.open ?? openBrowser)(url);
 
   return {

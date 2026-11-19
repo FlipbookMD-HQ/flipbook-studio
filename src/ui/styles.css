@@ -2399,3 +2399,85 @@ button.danger:not(.primary) {
   font-size: 0.72rem;
   color: var(--faint);
 }
+
+/* US-23: version history */
+.history-control {
+  position: relative;
+  display: inline-flex;
+}
+.history-panel {
+  display: grid;
+  gap: 0.6rem;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  text-align: left;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.history-panel p {
+  margin: 0;
+}
+.history-panel.disabled .history-save {
+  opacity: 0.6;
+}
+.history-repo code,
+.history-dir {
+  overflow-wrap: anywhere;
+}
+.history-save {
+  display: grid;
+  gap: 0.4rem;
+}
+.history-offer,
+.history-author {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.history-offer button {
+  display: grid;
+  text-align: left;
+}
+.history-dir {
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+.git-output pre {
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  background: var(--bg-deep);
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+.history-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.history-timeline li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid var(--accent-strong);
+  background: var(--panel-high);
+  border-radius: 0 6px 6px 0;
+}
+.history-note {
+  overflow-wrap: anywhere;
+}
+.history-meta {
+  font-size: 0.8rem;
+}

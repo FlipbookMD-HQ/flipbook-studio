@@ -37,6 +37,7 @@ Click **New deck**, give it a title, and start writing. Each slide has a form, a
 - **Style your decks** with themes, layouts on a 3×3 grid, and media kits that bundle a look with rules (a blueprint) Studio checks while you edit.
 - **Present** full screen, or **export** a PNG carousel for Instagram, X or LinkedIn, or an MP4 video.
 - **Duplicate** a deck or a kit to try a variation without touching the original.
+- **Save versions** of a deck with a short note, and see its past versions (uses git).
 - **Use AI, if you want:** rewrite a slide, generate a whole deck, draft a theme or kit, or chat about your deck. Every AI change is shown first, and you accept or reject it.
 
 ## Optional setup
@@ -105,6 +106,19 @@ History keeps the last 50 steps per deck and is cleared when Studio stops. If a 
 </details>
 
 <details>
+<summary><strong>Version history (git)</strong></summary>
+
+**History** in the deck's top bar saves a version of the deck with an optional note and lists its past versions, newest first, with the note, time, author and how many slides changed. Commits you made outside Studio that touch the deck are listed too. It needs git 2.30 or newer; without it, History is turned off and everything else works.
+
+- **What gets committed:** only the deck's own files. For a folder deck, that's its folder (slides, `presentation.yml`, CSS, `assets/`, and so on) except `dist/`, `exports/`, `node_modules/` and `.flipbook-studio-tmp/`. For a single-file deck, it's the `.slide.md` file plus the images in the shared `assets/` folder that it uses. Your other staged and unstaged changes in the repository stay exactly as they were. If you partly staged a file inside the deck, Studio commits the file as it is on disk.
+- **Not in a repository yet?** The first **Save version** offers to run `git init` in the deck's folder or in the workspace, and shows the path. Nothing happens unless you choose one, and no commit is made until you save a version. If the repository is above your workspace (for example, one in your home folder), History shows where versions go.
+- **Your git setup applies:** Studio runs your `git` command, so your hooks, signing and other settings run as usual. A failing hook shows git's output. A command that waits for input (such as a signing passphrase prompt) stops after 30 seconds; commit those from a terminal instead.
+- **Studio never pushes, pulls, amends or rewrites history,** never creates branches and never changes your git config. If git doesn't know your name and email, Studio asks once and passes them to git for each commit only.
+- History isn't available for a deck in a git submodule, a bare repository, a path that's ignored or stored with Git LFS, or a repository git won't open (`safe.directory`). It says why.
+
+</details>
+
+<details>
 <summary><strong>AI features</strong></summary>
 
 - **Rewrite a slide:** **AI** in the slide editor can shorten, expand, translate or follow your instruction. Save your edits first. The result shows as a diff, and nothing changes until you accept it.
@@ -166,6 +180,7 @@ npx https://github.com/uminocelo/flipbook-studio/releases/download/v0.1.0/flipbo
 | No port is available                  | Close other servers, or try `--port` (exit code 4).                                   |
 | An export needs Chromium or ffmpeg    | Install them as shown in [Exporting](#exporting-carousels-and-videos).                |
 | An AI button is turned off            | Set up a model in **Settings** (see [AI with a local model](#ai-with-a-local-model)). |
+| History is turned off                 | Install git 2.30 or newer, then restart Studio.                                       |
 
 ## Contributing
 

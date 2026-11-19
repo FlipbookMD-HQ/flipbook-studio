@@ -127,6 +127,11 @@ export class SettingsStore {
         else delete next.llm.taskModels;
       }
     }
+    // US-23: the commit author used only when git config has none; null forgets it.
+    if (patch.git) {
+      if (patch.git.author) next.git = { ...next.git, author: patch.git.author };
+      else delete next.git;
+    }
     const valid = SettingsSchema.parse(next);
     await this.write(valid);
     this.settings = valid;

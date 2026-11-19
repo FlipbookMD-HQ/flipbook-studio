@@ -49,6 +49,10 @@ import {
   ImportDeckResponseSchema,
   SourceDocumentSchema,
   type ImportDeckRequest,
+  VersionsResponseSchema,
+  SaveVersionResponseSchema,
+  GitInitResponseSchema,
+  type GitInitRequest,
 } from "../shared/api";
 import { z } from "zod";
 import { DECK_WRITTEN, isDeckWrite } from "./undo";
@@ -391,3 +395,17 @@ export const getHistory = (deckId: string) =>
   apiFetch(`/api/decks/${encodeURIComponent(deckId)}/history`, HistorySchema);
 export const undoDeck = (deckId: string, direction: "undo" | "redo") =>
   apiFetch(`/api/decks/${encodeURIComponent(deckId)}/${direction}`, UndoResponseSchema, { method: "POST" });
+
+// US-23: version history (git).
+export const getVersions = (deckId: string, before: string | null = null) =>
+  apiFetch(
+    `${deckUrl(deckId)}/versions${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+    VersionsResponseSchema,
+  );
+export const saveVersion = (deckId: string, note: string) =>
+  apiFetch(`${deckUrl(deckId)}/versions`, SaveVersionResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+export const initGit = (deckId: string, at: GitInitRequest["at"]) =>
+  apiFetch("/api/git/init", GitInitResponseSchema, { method: "POST", body: JSON.stringify({ deckId, at }) });

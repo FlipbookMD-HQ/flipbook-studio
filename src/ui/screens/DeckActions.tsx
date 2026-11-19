@@ -11,6 +11,7 @@ import type {
 import { ApiRequestError, cancelJob, followJob, getExports, presentDeck, startExport } from "../api";
 import { ErrorNotice } from "./Shell";
 import { UndoControls } from "./UndoControls";
+import { HistoryControl } from "./HistoryPanel";
 
 const asApiError = (error: unknown): ApiError =>
   error instanceof ApiRequestError ? error.error : { code: "INTERNAL", message: (error as Error).message };
@@ -22,7 +23,7 @@ function blankTab(): Window | null {
   return tab;
 }
 
-/** Undo, Redo, Present and Export for a deck, in the top bar. */
+/** Undo, Redo, History, Present and Export for a deck, in the top bar. */
 export function DeckActions({
   deckId,
   slideIndex,
@@ -64,6 +65,7 @@ export function DeckActions({
   return (
     <>
       <UndoControls deckId={deckId} blocked={undoBlocked} onChanged={onUndo} />
+      <HistoryControl deckId={deckId} />
       <button type="button" onClick={present} disabled={disabled}>
         Present
       </button>
