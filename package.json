@@ -55,7 +55,7 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@types/turndown": "^5.0.6",
-    "@vitejs/plugin-react": "^6.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "codemirror": "^6.0.2",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
