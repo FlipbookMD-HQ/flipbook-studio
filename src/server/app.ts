@@ -125,7 +125,17 @@ const STATIC_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
+
+/** Files the browser needs to install Studio. Every other path stays a client route. */
+function installAsset(pathname: string): boolean {
+  return (
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    /^\/icons\/[a-z0-9-]+\.png$/.test(pathname)
+  );
+}
 
 export interface AppOptions {
   workspace: string;
@@ -796,8 +806,9 @@ export function createApp(options: AppOptions) {
 
   app.get("*", async (c) => {
     const pathname = new URL(c.req.url).pathname;
-    // Vite's bundle lives under /assets/. Every other path is a client route (slide IDs end in .md).
-    if (pathname.startsWith("/assets/")) {
+    // Vite's bundle lives under /assets/. The manifest, worker, and icons install the window.
+    // Every other path is a client route (slide IDs end in .md).
+    if (pathname.startsWith("/assets/") || installAsset(pathname)) {
       const file = await resolveInside(options.uiDir, decodeURIComponent(pathname.slice(1))).catch(
         () => null,
       );
