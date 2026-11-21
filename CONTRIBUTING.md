@@ -14,7 +14,7 @@ npm run lint && npm run typecheck
 
 Run your build with `node bin/flipbook-studio.js ~/decks`, or run `npm link` once to get a `flipbook-studio` command you can use from any folder.
 
-Studio depends on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core) from npm. To develop both together, clone `flipbook-md-core` next to this repository and run `npm link ../flipbook-md-core`.
+Studio depends on [`@flipbook-md/core`](https://github.com/FlipbookMD-HQ/flipbook-md-core) from npm. To develop both together, clone `flipbook-md-core` next to this repository and run `npm link ../flipbook-md-core`.
 
 The HTTP API under `/api` is internal to Studio and is not a public, stable API.
 

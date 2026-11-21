@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { compare, createToken, tokenMatches } from "../src/server/guard.js";
-import { MAX_BODY_BYTES } from "../src/server/app.js";
-import { TOKEN, headers, makeApp, tempDir } from "./helpers.js";
+import { createApp, MAX_BODY_BYTES } from "../src/server/app.js";
+import { TOKEN_PLACEHOLDER } from "../src/shared/api.js";
+import { PORT, TOKEN, headers, makeApp, tempDir, write } from "./helpers.js";
 
 const wrongToken = `${TOKEN.slice(0, -1)}b`;
 
@@ -58,6 +59,45 @@ describe("local guard on /api", () => {
     });
     expect(response.status).toBe(413);
     expect(await response.json()).toMatchObject({ error: { code: "PAYLOAD_TOO_LARGE" } });
+  });
+
+  it("serves the install files, and a client route still gets the shell", async () => {
+    const uiDir = await tempDir("studio-ui-");
+    await write(uiDir, {
+      "index.html": `<meta name="flipbook-token" content="${TOKEN_PLACEHOLDER}">`,
+      "manifest.webmanifest": '{"name":"Flipbook Studio"}',
+      "sw.js": "self.addEventListener('fetch', (event) => event.respondWith(fetch(event.request)));",
+      "icons/icon-192.png": "png",
+    });
+    const app = await createApp({
+      workspace: await tempDir(),
+      library: await tempDir(),
+      token: TOKEN,
+      port: () => PORT,
+      uiDir,
+      log: () => {},
+    });
+    const manifest = await app.request("/manifest.webmanifest", {
+      headers: headers({ "x-flipbook-token": null }),
+    });
+    expect(manifest.status).toBe(200);
+    expect(manifest.headers.get("content-type")).toContain("application/manifest+json");
+    expect(await manifest.text()).toContain("Flipbook Studio");
+    const worker = await app.request("/sw.js", { headers: headers({ "x-flipbook-token": null }) });
+    expect(worker.headers.get("content-type")).toContain("text/javascript");
+    const icon = await app.request("/icons/icon-192.png", { headers: headers({ "x-flipbook-token": null }) });
+    expect(icon.headers.get("content-type")).toBe("image/png");
+    const route = await app.request("/decks/abc", { headers: headers({ "x-flipbook-token": null }) });
+    expect(await route.text()).toContain(`content="${TOKEN}"`);
+    const missing = await app.request("/icons/missing.png", {
+      headers: headers({ "x-flipbook-token": null }),
+    });
+    expect(missing.status).toBe(404);
+    const rebound = await app.request("/manifest.webmanifest", {
+      headers: headers({ host: "attacker.com" }),
+    });
+    expect(rebound.status).toBe(403);
+    expect(await rebound.text()).not.toContain("Flipbook Studio");
   });
 
   it("serves index.html with the token only after the Host check", async () => {

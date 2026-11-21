@@ -1,13 +1,13 @@
 {
   "name": "@flipbook-md/studio",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Self-hosted editor for Flipbook MD decks, themes, templates, blueprints and media kits.",
   "license": "MIT",
   "author": "Celo (https://github.com/uminocelo)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/uminocelo/flipbook-studio.git"
+    "url": "git+https://github.com/FlipbookMD-HQ/flipbook-studio.git"
   },
   "type": "module",
   "bin": {

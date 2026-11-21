@@ -2,9 +2,9 @@
 
 **Make slide decks from Markdown, in an editor that runs on your own computer.**
 
-Studio is the visual editor for [Flipbook MD](https://github.com/uminocelo/flipbook-md). Your decks stay plain files in a folder you choose, so they work with the `flipbook` command line too, and you can keep them in git. Nothing is uploaded anywhere. AI is optional and uses a model on your own machine.
+Studio is the visual editor for [Flipbook MD](https://github.com/FlipbookMD-HQ/flipbook-md). Your decks stay plain files in a folder you choose, so they work with the `flipbook` command line too, and you can keep them in git. Nothing is uploaded anywhere. AI is optional. A model can run on your own machine, or you can connect Claude, OpenAI, or another HTTPS service and choose a model for each task.
 
-> **Status: preview (v0.1).** Things work, but expect rough edges. [Report a problem](https://github.com/uminocelo/flipbook-studio/issues).
+> **Version 0.3.2.** [Report a problem](https://github.com/FlipbookMD-HQ/flipbook-studio/issues).
 
 ## Quick start
 
@@ -13,7 +13,7 @@ You need [Node.js](https://nodejs.org) 20 or newer. Check with `node --version`.
 **1. Install Studio**
 
 ```sh
-npm install -g https://github.com/uminocelo/flipbook-studio/releases/latest/download/flipbook-studio.tgz
+npm install -g https://github.com/FlipbookMD-HQ/flipbook-studio/releases/latest/download/flipbook-studio.tgz
 ```
 
 **2. Open a folder for your decks**
@@ -24,6 +24,8 @@ flipbook-studio ~/decks
 ```
 
 Studio opens in your browser. Keep the terminal open while you work, and press **Ctrl+C** in it to stop Studio.
+
+Chrome or Edge can install that window from the address bar while Studio is running. The installed app talks to this computer's server. Stopping Studio closes the work, and each `--port` is its own installed app.
 
 **3. Make your first deck**
 
@@ -81,7 +83,7 @@ You can add one Anthropic provider, one OpenAI provider, and any number of other
 
 - Each key goes only to its own provider's base URL. Studio never follows a redirect from a provider, so a key can't be passed on to another host.
 - Listing models and **Test** send only the key and a fixed one-line test prompt. They never send deck content.
-- Adding a provider changes no AI task. Rewriting, generating, drafting and chat still use your local model, so **nothing from your decks is sent to a paid provider until you assign a task to it**. Choosing a provider for a task comes in a later release.
+- Adding a provider changes no AI task. Rewriting, generating, drafting and chat still use your local model, so **nothing from your decks is sent to a paid provider until you assign a task to it**. Assign one under **Settings → Model for each task**.
 
 ## Guides
 
@@ -185,10 +187,10 @@ Run the install command again to update. To uninstall:
 npm uninstall -g @flipbook-md/studio
 ```
 
-To try a specific version without installing it, use its link from the [releases page](https://github.com/uminocelo/flipbook-studio/releases):
+To try a specific version without installing it, use its link from the [releases page](https://github.com/FlipbookMD-HQ/flipbook-studio/releases):
 
 ```sh
-npx https://github.com/uminocelo/flipbook-studio/releases/download/v0.1.0/flipbook-studio.tgz ~/decks
+npx https://github.com/FlipbookMD-HQ/flipbook-studio/releases/download/v0.3.2/flipbook-studio.tgz ~/decks
 ```
 
 ### Troubleshooting
@@ -204,4 +206,4 @@ npx https://github.com/uminocelo/flipbook-studio/releases/download/v0.1.0/flipbo
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to build Studio from source, run the tests or cut a release. Studio is built on [`@flipbook-md/core`](https://github.com/uminocelo/flipbook-md-core), the same library as the `flipbook` CLI.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to build Studio from source, run the tests or cut a release. Studio is built on [`@flipbook-md/core`](https://github.com/FlipbookMD-HQ/flipbook-md-core), the same library as the `flipbook` CLI.

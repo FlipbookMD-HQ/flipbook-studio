@@ -14,7 +14,10 @@ import { BlueprintScreen } from "./screens/BlueprintScreen";
 import { MediaKitsScreen } from "./screens/MediaKitsScreen";
 import { MediaKitScreen } from "./screens/MediaKitScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { registerStudioWorker } from "./pwa";
 import "./styles.css";
+
+registerStudioWorker();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
