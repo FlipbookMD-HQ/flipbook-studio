@@ -1,5 +1,7 @@
 # Flipbook Studio
 
+![Flipbook Studio](docs/logo.svg)
+
 **Make slide decks from Markdown, in an editor that runs on your own computer.**
 
 Studio is the visual editor for [Flipbook MD](https://github.com/FlipbookMD-HQ/flipbook-md). Your decks stay plain files in a folder you choose, so they work with the `flipbook` command line too, and you can keep them in git. Nothing is uploaded anywhere. AI is optional. A model can run on your own machine, or you can connect Claude, OpenAI, or another HTTPS service and choose a model for each task.
